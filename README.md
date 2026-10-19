@@ -2,7 +2,7 @@
 
 ## 一行安装
 
-在支持 Bash 的 Linux NAS 或 Linux 服务器终端执行：
+在 Linux NAS、OpenWrt 或 Linux 服务器终端执行。下面的启动命令会先尝试使用系统现有的下载工具；若缺少 Bash，会通过系统包管理器安装 Bash，再启动安装程序：
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/ztesfyfi/cfst-top10/main/install.sh)
@@ -63,7 +63,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/ztesfyfi/cfst-top10/main/ins
 ## 注意事项
 
 - 支持 Linux x86_64 和 ARM64（aarch64）。
-- 需要 Bash、curl、tar、Python 3 和 crontab；远程模式还需要 SSH/SCP。
+- 安装程序会检测并尝试自动安装缺少的 Bash 运行依赖、curl、tar、Python 3、crontab；远程模式还会按需安装 SSH/SCP 工具。自动安装依赖需要可用的软件源和网络。
+- OpenWrt 的包名和可用组件可能随版本、架构及软件源不同；若系统软件源没有相应包，脚本会明确报错，不会静默跳过依赖。
 - 不要把 SSH 私钥上传到 GitHub。私钥仅保存在运行安装程序的本机。
 - 本项目只负责在本机运行 CFST、筛选结果及按需上传；IP 的连通性和速度受网络环境影响。
 
