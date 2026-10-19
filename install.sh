@@ -10,10 +10,53 @@ MANAGER="$BASE/cfst-manager.sh"
 
 say(){ printf '\n==> %s\n' "$*"; }
 fail(){ printf '\n错误：%s\n' "$*" >&2; exit 1; }
-for cmd in curl tar python3 crontab; do
-  command -v "$cmd" >/dev/null 2>&1 || fail "缺少依赖：$cmd。请先在系统中安装。"
-done
+
 [[ "$(uname -s)" == Linux ]] || fail "此脚本仅支持 Linux NAS/服务器。"
+
+# 缺少依赖时，尽可能通过系统自带包管理器自动安装。
+PKG_KIND=""
+if command -v opkg >/dev/null 2>&1; then PKG_KIND=opkg
+elif command -v apk >/dev/null 2>&1; then PKG_KIND=apk
+elif command -v apt-get >/dev/null 2>&1; then PKG_KIND=apt
+elif command -v dnf >/dev/null 2>&1; then PKG_KIND=dnf
+elif command -v yum >/dev/null 2>&1; then PKG_KIND=yum
+fi
+
+pkg_install() {
+  local package="$1"
+  case "$PKG_KIND" in
+    opkg) opkg install "$package" ;;
+    apk) apk add "$package" ;;
+    apt) DEBIAN_FRONTEND=noninteractive apt-get install -y "$package" ;;
+    dnf) dnf install -y "$package" ;;
+    yum) yum install -y "$package" ;;
+    *) return 1 ;;
+  esac
+}
+
+ensure_cmd() {
+  local cmd="$1" package="$2"
+  command -v "$cmd" >/dev/null 2>&1 && return 0
+  [[ -n "$PKG_KIND" ]] || fail "缺少依赖 $cmd，且未检测到可用包管理器，无法自动安装。"
+  say "检测到缺少依赖 $cmd，尝试自动安装软件包：$package"
+  if [[ "$PKG_KIND" == opkg ]]; then opkg update || fail "opkg 更新软件源失败，无法安装 $package。"
+  elif [[ "$PKG_KIND" == apt ]]; then apt-get update || fail "apt 更新软件源失败，无法安装 $package。"
+  fi
+  pkg_install "$package" || fail "自动安装 $package 失败。请检查软件源、网络和磁盘空间后重试。"
+  command -v "$cmd" >/dev/null 2>&1 || fail "已尝试安装 $package，但仍找不到命令 $cmd。"
+}
+
+# 先确保脚本运行和下载所需工具可用；OpenWrt 优先使用轻量 Python 包。
+ensure_cmd curl curl
+ensure_cmd tar tar
+if ! command -v python3 >/dev/null 2>&1; then
+  if [[ "$PKG_KIND" == opkg ]]; then
+    ensure_cmd python3 python3-light || ensure_cmd python3 python3
+  else
+    ensure_cmd python3 python3
+  fi
+fi
+ensure_cmd crontab cronie
 case "$(uname -m)" in
   x86_64|amd64) ASSET_RE='(linux_amd64|amd64).*\.tar\.gz$' ;;
   aarch64|arm64) ASSET_RE='(linux_arm64|arm64).*\.tar\.gz$' ;;
@@ -39,7 +82,9 @@ IP_COUNT="${IP_COUNT:-$IP_COUNT_DEFAULT}"
 
 VPS_HOST="" VPS_PORT="" VPS_USER="" REMOTE_DIR="" PUBLIC_URL=""
 if [[ "$MODE" == 2 ]]; then
-  for cmd in ssh scp ssh-keygen; do command -v "$cmd" >/dev/null 2>&1 || fail "远程模式缺少依赖：$cmd"; done
+  ensure_cmd ssh openssh-client
+  ensure_cmd scp openssh-client
+  ensure_cmd ssh-keygen openssh-client
   echo "请输入你自己的 VPS 参数，不会使用项目作者的服务器。"
   read -r -p "VPS 主机名或 IP: " VPS_HOST
   read -r -p "SSH 端口 [默认 22]: " VPS_PORT
