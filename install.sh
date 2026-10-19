@@ -116,7 +116,7 @@ if [[ "$MODE" == 2 ]]; then
     echo "注意：该 URL 适用于 Web 根目录为 /var/www/html 的常见配置；若你的 Nginx/Apache 使用其他根目录，需调整映射。"
   else
     PUBLISH_SLUG="cfst-$(( (RANDOM << 15 | RANDOM) % 900000 + 100000 ))"
-    REMOTE_DIR="$HOME/CFST-REMOTE-$PUBLISH_SLUG"
+    REMOTE_DIR="CFST-REMOTE-$PUBLISH_SLUG"
     echo "未填写域名，将仅上传到 VPS 用户目录：$REMOTE_DIR"
   fi
 fi
