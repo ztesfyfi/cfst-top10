@@ -204,7 +204,7 @@ PY
 mv "$TMP" "$OUT"
 echo "本地结果已保存：$OUT"
 if [[ "$MODE" == 2 ]]; then
-  ssh -i "$KEY" -p "$VPS_PORT" -o BatchMode=yes -o ConnectTimeout=10 "$VPS_USER@$VPS_HOST" "mkdir -p '$REMOTE_DIR'" || { echo "远端目录创建失败：请确认 SSH 公钥已授权，且登录用户有权限创建 $REMOTE_DIR" >&2; exit 1; }
+  ssh -i "$KEY" -p "$VPS_PORT" -o BatchMode=yes -o ConnectTimeout=10 "$VPS_USER@$VPS_HOST" "mkdir -p '$REMOTE_DIR' 2>/dev/null || { sudo -n mkdir -p '$REMOTE_DIR' && sudo -n chown '$VPS_USER' '$REMOTE_DIR'; }" || { echo "远端目录创建失败：请确认 SSH 公钥已授权，且登录用户有权限创建 $REMOTE_DIR（或具备免密码 sudo 权限）" >&2; exit 1; }
   scp -i "$KEY" -P "$VPS_PORT" -o BatchMode=yes -o ConnectTimeout=10 "$OUT" "$VPS_USER@$VPS_HOST:$REMOTE_DIR/ips.txt"
   echo "远程上传成功：$VPS_HOST:$REMOTE_DIR/ips.txt"
   [[ -z "$PUBLIC_URL" ]] || echo "公开地址：$PUBLIC_URL"
