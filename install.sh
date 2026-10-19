@@ -77,6 +77,12 @@ TMP="$(mktemp -d)"
 ALT_SCREEN=0
 trap 'rm -rf "$TMP"; if [[ "${ALT_SCREEN:-0}" == 1 ]]; then printf "\033[?1049l"; fi' EXIT
 
+# 启动后立即进入终端备用屏幕，安装首页从独立画面开始。
+if [[ -t 0 && -t 1 ]]; then
+  printf '\033[?1049h\033[2J\033[H'
+  ALT_SCREEN=1
+fi
+
 say "选择使用方式"
 echo "1) 本地使用（不需要 VPS、域名或 SSH）"
 echo "2) VPS 远程发布（需要自己的 VPS 和 Web 发布目录）"
@@ -84,10 +90,9 @@ read -r -p "请选择 [1/2，默认 1]: " MODE
 MODE="${MODE:-1}"
 [[ "$MODE" == 1 || "$MODE" == 2 ]] || fail "请选择 1 或 2。"
 
-# 选择模式后切换到终端备用屏幕，形成独立页面；退出时自动恢复原屏幕。
+# 选择模式后在独立页面内清屏，显示下一步配置。
 if [[ -t 0 && -t 1 ]]; then
-  printf '\033[?1049h\033[2J\033[H'
-  ALT_SCREEN=1
+  printf '\033[2J\033[H'
 fi
 printf '\n===== CFST 安装配置 =====\n'
 if [[ "$MODE" == 1 ]]; then
