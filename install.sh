@@ -8,7 +8,7 @@ KEY="$HOME/.ssh/cfst_publish"
 CONFIG="$BASE/publish.conf"
 PUBLISHER="$BASE/run-and-publish.sh"
 MANAGER="$BASE/cfst-manager.sh"
-URL_DEFAULT="https://sha256.680675.xyz/cfst/top10.txt"
+URL_DEFAULT="https://sha256.680675.xyz/cfst/ips.txt"
 REMOTE_DIR="/var/www/subconv/cfst"
 
 say(){ printf '\n==> %s\n' "$*"; }
@@ -55,9 +55,13 @@ read -r -p "上传用户 [cfstpub]: " VPS_USER
 VPS_USER="${VPS_USER:-cfstpub}"
 read -r -p "远端目录 [$REMOTE_DIR]: " INPUT_REMOTE
 REMOTE_DIR="${INPUT_REMOTE:-$REMOTE_DIR}"
+read -r -p "每次发布的 IP 数量 [10]: " IP_COUNT
+IP_COUNT="${IP_COUNT:-10}"
 read -r -p "公开 TXT 地址 [$URL_DEFAULT]: " PUBLIC_URL
 PUBLIC_URL="${PUBLIC_URL:-$URL_DEFAULT}"
 [[ "$VPS_PORT" =~ ^[0-9]+$ ]] || fail "SSH 端口必须是数字。"
+[[ "$IP_COUNT" =~ ^[1-9][0-9]*$ ]] || fail "IP 数量必须是正整数。"
+(( IP_COUNT <= 10000 )) || fail "单次发布数量不能超过 10000。"
 [[ "$VPS_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || fail "主机名格式不正确。"
 [[ "$VPS_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || fail "上传用户名格式不正确。"
 [[ "$REMOTE_DIR" =~ ^/[A-Za-z0-9_./-]+$ ]] || fail "远端目录只允许普通路径字符。"
@@ -86,8 +90,8 @@ BIN_DIR="$BASE/cfst_linux_amd64"
 CONFIG="$BASE/publish.conf"
 KEY="$HOME/.ssh/cfst_publish"
 CSV="$BIN_DIR/result.csv"
-OUT="$BASE/top10.txt"
-TMP="$BASE/top10.txt.tmp"
+OUT="$BASE/ips.txt"
+TMP="$BASE/ips.txt.tmp"
 LOCK="$BASE/.run.lock"
 [[ -r "$CONFIG" ]] || { echo '缺少 publish.conf，请重新运行安装脚本。' >&2; exit 1; }
 # shellcheck disable=SC1090
@@ -98,9 +102,9 @@ cd "$BIN_DIR"
 echo "[$(date '+%F %T')] 开始测速"
 ./cfst > "$BASE/cfst-run.log" 2>&1 || { tail -20 "$BASE/cfst-run.log"; exit 1; }
 [[ -s "$CSV" ]] || { echo 'result.csv 不存在或为空；保留之前的公开结果。' >&2; exit 1; }
-python3 - "$CSV" "$TMP" <<'PY'
+python3 - "$CSV" "$TMP" "$IP_COUNT" <<'PY'
 import csv, ipaddress, sys
-src, dst = sys.argv[1:3]
+src, dst, limit = sys.argv[1], sys.argv[2], int(sys.argv[3])
 rows = []
 with open(src, encoding='utf-8-sig', newline='') as f:
     reader = csv.DictReader(f)
@@ -120,16 +124,16 @@ for _, ip in rows:
     if ip not in seen:
         seen.add(ip)
         ips.append(ip)
-    if len(ips) == 10:
+    if len(ips) == limit:
         break
 if not ips:
     raise SystemExit('未找到零丢包 IP；保留之前的公开结果。请检查 CFST CSV 列名/测速结果。')
 with open(dst, 'w', encoding='ascii', newline='\n') as f:
     f.write('\n'.join(ips) + '\n')
-print(f'已筛选 {len(ips)} 个零丢包 IP。')
+print(f'已筛选 {len(ips)} 个零丢包 IP（目标数量 {limit}）。')
 PY
 mv "$TMP" "$OUT"
-scp -i "$KEY" -P "$VPS_PORT" -o BatchMode=yes -o ConnectTimeout=10 "$OUT" "$VPS_USER@$VPS_HOST:$REMOTE_DIR/top10.txt"
+scp -i "$KEY" -P "$VPS_PORT" -o BatchMode=yes -o ConnectTimeout=10 "$OUT" "$VPS_USER@$VPS_HOST:$REMOTE_DIR/ips.txt"
 echo "[$(date '+%F %T')] 发布成功：$(wc -l < "$OUT") 个 IP"
 echo "公开地址：$PUBLIC_URL"
 SH
@@ -142,10 +146,10 @@ BASE="$HOME/CFST"
 PUBLISHER="$BASE/run-and-publish.sh"
 CONFIG="$BASE/publish.conf"
 URL="$(sed -n "s/^PUBLIC_URL='\(.*\)'$/\1/p" "$CONFIG" 2>/dev/null | head -n1)"
-URL="${URL:-https://sha256.680675.xyz/cfst/top10.txt}"
+URL="${URL:-https://sha256.680675.xyz/cfst/ips.txt}"
 while true; do
   clear 2>/dev/null || true
-  echo '===== CFST Top 10 管理菜单 ====='
+  echo '===== CFST IP 列表管理菜单 ====='
   echo '1) 立即测速并发布'
   echo '2) 查看公开 Top 10'
   echo '3) 查看自动任务日志'
@@ -168,13 +172,14 @@ chmod 700 "$MANAGER"
 
 say "设置每天凌晨 03:30 自动测速并发布"
 OLD_CRON="$(crontab -l 2>/dev/null || true)"
-NEW_CRON="$(printf '%s\n' "$OLD_CRON" | grep -vF '# cfst-top10 managed job' || true)"
+NEW_CRON="$(printf '%s\n' "$OLD_CRON" | grep -vF '# cfst-ip-list managed job' || true)"
 printf '%s\n%s\n' "$NEW_CRON" "30 3 * * * $PUBLISHER >> $BASE/cron.log 2>&1 # cfst-top10 managed job" | sed '/^[[:space:]]*$/d' | crontab -
 
 say "安装完成"
 echo "管理菜单：$MANAGER"
 echo "立即测速：$PUBLISHER"
-echo "本地结果：$BASE/top10.txt"
+echo "单次发布数量：$IP_COUNT 个（可重新运行安装脚本修改）"
+echo "本地结果：$BASE/ips.txt"
 echo "公开地址：$PUBLIC_URL"
 echo
 echo "请将以下公钥添加到 VPS 上传用户的 ~/.ssh/authorized_keys："
