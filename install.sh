@@ -51,7 +51,8 @@ ensure_cmd curl curl
 ensure_cmd tar tar
 if ! command -v python3 >/dev/null 2>&1; then
   if [[ "$PKG_KIND" == opkg ]]; then
-    ensure_cmd python3 python3-light || ensure_cmd python3 python3
+    # OpenWrt 通常提供轻量 Python 包；若仓库不提供该包，明确报错并提示检查软件源。
+    ensure_cmd python3 python3-light
   else
     ensure_cmd python3 python3
   fi
