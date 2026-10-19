@@ -89,7 +89,7 @@ IP_COUNT="${IP_COUNT:-$IP_COUNT_DEFAULT}"
 [[ "$IP_COUNT" =~ ^[1-9][0-9]*$ ]] || fail "数量必须是正整数。"
 (( IP_COUNT <= 100000 )) || fail "单次数量最多 100000。"
 
-VPS_HOST="" VPS_PORT="" VPS_USER="" REMOTE_DIR="" PUBLIC_URL=""
+VPS_HOST="" VPS_PORT="" VPS_USER="" REMOTE_DIR="" PUBLIC_URL="" PUBLIC_DOMAIN="" PUBLISH_SLUG=""
 if [[ "$MODE" == 2 ]]; then
   ensure_cmd ssh openssh-client
   ensure_cmd scp openssh-client
@@ -99,14 +99,25 @@ if [[ "$MODE" == 2 ]]; then
   read -r -p "SSH 端口 [默认 22]: " VPS_PORT
   VPS_PORT="${VPS_PORT:-22}"
   read -r -p "SSH 登录用户名: " VPS_USER
-  read -r -p "远端发布目录（需提前创建并可写）: " REMOTE_DIR
-  read -r -p "结果公开 URL（可选；没有 Web 服务可留空）: " PUBLIC_URL
+  read -r -p "自定义域名（只填域名，例如 sub.example.com；没有可留空）: " PUBLIC_DOMAIN
   [[ -n "$VPS_HOST" && "$VPS_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || fail "VPS 主机名/IP 格式不正确。"
   [[ "$VPS_PORT" =~ ^[0-9]+$ ]] && (( VPS_PORT >= 1 && VPS_PORT <= 65535 )) || fail "SSH 端口无效。"
   [[ "$VPS_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || fail "SSH 用户名格式不正确。"
-  [[ "$REMOTE_DIR" =~ ^/[A-Za-z0-9_./-]+$ ]] || fail "远端目录必须是绝对路径，且仅包含普通路径字符。"
-  if [[ -n "$PUBLIC_URL" ]]; then
-    [[ "$PUBLIC_URL" =~ ^https?://[^[:space:]]+$ ]] || fail "公开 URL 格式不正确。"
+  if [[ -n "$PUBLIC_DOMAIN" ]]; then
+    PUBLIC_DOMAIN="${PUBLIC_DOMAIN#https://}"
+    PUBLIC_DOMAIN="${PUBLIC_DOMAIN#http://}"
+    PUBLIC_DOMAIN="${PUBLIC_DOMAIN%%/*}"
+    [[ "$PUBLIC_DOMAIN" =~ ^([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\\.)*[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]] || fail "域名格式不正确，请只填写域名，不要带路径。"
+    PUBLISH_SLUG="cfst-$(( (RANDOM << 15 | RANDOM) % 900000 + 100000 ))"
+    REMOTE_DIR="/var/www/html/$PUBLISH_SLUG"
+    PUBLIC_URL="https://$PUBLIC_DOMAIN/$PUBLISH_SLUG/ips.txt"
+    echo "自动生成发布目录：$REMOTE_DIR"
+    echo "自动生成完整公开 URL：$PUBLIC_URL"
+    echo "注意：该 URL 适用于 Web 根目录为 /var/www/html 的常见配置；若你的 Nginx/Apache 使用其他根目录，需调整映射。"
+  else
+    PUBLISH_SLUG="cfst-$(( (RANDOM << 15 | RANDOM) % 900000 + 100000 ))"
+    REMOTE_DIR="$HOME/CFST-REMOTE-$PUBLISH_SLUG"
+    echo "未填写域名，将仅上传到 VPS 用户目录：$REMOTE_DIR"
   fi
 fi
 
@@ -141,6 +152,8 @@ VPS_PORT='$VPS_PORT'
 VPS_USER='$VPS_USER'
 REMOTE_DIR='$REMOTE_DIR'
 PUBLIC_URL='$PUBLIC_URL'
+PUBLIC_DOMAIN='$PUBLIC_DOMAIN'
+PUBLISH_SLUG='$PUBLISH_SLUG'
 EOF
 chmod 600 "$CONFIG"
 
@@ -191,6 +204,7 @@ PY
 mv "$TMP" "$OUT"
 echo "本地结果已保存：$OUT"
 if [[ "$MODE" == 2 ]]; then
+  ssh -i "$KEY" -p "$VPS_PORT" -o BatchMode=yes -o ConnectTimeout=10 "$VPS_USER@$VPS_HOST" "mkdir -p '$REMOTE_DIR'" || { echo "远端目录创建失败：请确认 SSH 公钥已授权，且登录用户有权限创建 $REMOTE_DIR" >&2; exit 1; }
   scp -i "$KEY" -P "$VPS_PORT" -o BatchMode=yes -o ConnectTimeout=10 "$OUT" "$VPS_USER@$VPS_HOST:$REMOTE_DIR/ips.txt"
   echo "远程上传成功：$VPS_HOST:$REMOTE_DIR/ips.txt"
   [[ -z "$PUBLIC_URL" ]] || echo "公开地址：$PUBLIC_URL"
@@ -250,7 +264,11 @@ if [[ "$MODE" == 2 ]]; then
   echo "远程模式：请将下面公钥添加到 VPS 登录用户的 ~/.ssh/authorized_keys："
   cat "$KEY.pub"
   echo
-  echo "远端目录必须已创建且对该用户可写；如需公开 URL，还需自行配置 Web 服务。"
+  echo "远端目录会在首次运行时自动创建；请先将显示的 SSH 公钥添加到 VPS 的 ~/.ssh/authorized_keys。"
+  if [[ -n "$PUBLIC_URL" ]]; then
+    echo "自动生成的公开 URL：$PUBLIC_URL"
+    echo "请确认域名已解析到 VPS，且 Web 服务将 /$PUBLISH_SLUG/ 映射到 $REMOTE_DIR。"
+  fi
 fi
 echo
 echo "启动管理菜单：$MANAGER"
