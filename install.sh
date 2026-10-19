@@ -56,7 +56,15 @@ if ! command -v python3 >/dev/null 2>&1; then
     ensure_cmd python3 python3
   fi
 fi
-ensure_cmd crontab cronie
+if ! command -v crontab >/dev/null 2>&1; then
+  case "$PKG_KIND" in
+    opkg) ensure_cmd crontab cronie ;;
+    apk) ensure_cmd crontab dcron ;;
+    apt) ensure_cmd crontab cron ;;
+    dnf|yum) ensure_cmd crontab cronie ;;
+    *) fail "缺少 crontab，且无法自动安装定时任务组件。" ;;
+  esac
+fi
 case "$(uname -m)" in
   x86_64|amd64) ASSET_RE='(linux_amd64|amd64).*\.tar\.gz$' ;;
   aarch64|arm64) ASSET_RE='(linux_arm64|arm64).*\.tar\.gz$' ;;
