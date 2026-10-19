@@ -83,6 +83,18 @@ read -r -p "请选择 [1/2，默认 1]: " MODE
 MODE="${MODE:-1}"
 [[ "$MODE" == 1 || "$MODE" == 2 ]] || fail "请选择 1 或 2。"
 
+# 选择模式后清屏，进入下一页式的配置界面；非交互终端则跳过清屏。
+if [[ -t 0 && -t 1 ]]; then
+  printf '\033[2J\033[H'
+fi
+printf '\n===== CFST 安装配置 =====\n'
+if [[ "$MODE" == 1 ]]; then
+  echo "当前模式：本地使用"
+else
+  echo "当前模式：VPS 远程发布"
+fi
+echo
+
 IP_COUNT_DEFAULT=10
 read -r -p "每次保留多少个优选 IP [默认 10]: " IP_COUNT
 IP_COUNT="${IP_COUNT:-$IP_COUNT_DEFAULT}"
