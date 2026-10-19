@@ -74,7 +74,8 @@ esac
 
 mkdir -p "$BASE" "$HOME/.ssh"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+ALT_SCREEN=0
+trap 'rm -rf "$TMP"; if [[ "${ALT_SCREEN:-0}" == 1 ]]; then printf '\\033[?1049l'; fi' EXIT
 
 say "选择使用方式"
 echo "1) 本地使用（不需要 VPS、域名或 SSH）"
@@ -83,11 +84,12 @@ read -r -p "请选择 [1/2，默认 1]: " MODE
 MODE="${MODE:-1}"
 [[ "$MODE" == 1 || "$MODE" == 2 ]] || fail "请选择 1 或 2。"
 
-# 选择模式后清屏，进入下一页式的配置界面；非交互终端则跳过清屏。
+# 选择模式后切换到终端备用屏幕，形成独立页面；退出时自动恢复原屏幕。
 if [[ -t 0 && -t 1 ]]; then
-  printf '\033[2J\033[H'
+  printf '\\033[?1049h\\033[2J\\033[H'
+  ALT_SCREEN=1
 fi
-printf '\n===== CFST 安装配置 =====\n'
+printf '\\n===== CFST 安装配置 =====\\n'
 if [[ "$MODE" == 1 ]]; then
   echo "当前模式：本地使用"
 else
