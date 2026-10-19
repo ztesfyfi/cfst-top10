@@ -8,6 +8,10 @@
 bash <(curl -fsSL https://raw.githubusercontent.com/ztesfyfi/cfst-top10/main/install.sh)
 ```
 
+```bash
+sh -c 'command -v bash >/dev/null || { opkg update && opkg install bash; }; exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/ztesfyfi/cfst-top10/main/install.sh)"'
+```
+
 安装程序会引导你选择使用方式。不会预设项目作者的 VPS、域名、端口、用户名或公开地址。
 
 ## 两种使用模式
