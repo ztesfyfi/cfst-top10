@@ -2,7 +2,7 @@
 
 CFST 优选 IP 管理系统，继续使用 CloudflareSpeedTest（CFST）作为底层测速引擎。新版本采用 Docker 化 Web 应用，Docker Compose 是唯一正式部署方式。
 
-> **开发状态：Docker 第一阶段骨架已提交。** 当前已包含容器构建、非 root 运行、管理 Token、SQLite 持久化、内置 IP 库登记、TXT 来源上传/启停/删除及来源合并统计。测速执行、URL 来源、定时任务、结果管理、Gist/KV 发布仍在开发中，不能视为已交付功能。
+> **开发状态：Docker 第一阶段骨架已提交。** 当前已包含容器构建、非 root 运行、管理 Token、SQLite 持久化、内置 IP 库登记、TXT 来源上传/启停/删除及来源合并统计。URL 来源、定时任务仍在开发中；Gist 与 Cloudflare Worker/KV 发布代码已提交，正在进行 CI 和真实账号联调验收。
 
 ## Docker Compose 部署（开发版）
 
@@ -65,11 +65,11 @@ docker compose down
 完整需求和架构约束见 [docs/PROJECT-PLAN.md](docs/PROJECT-PLAN.md)。
 
 
-## 外部发布方式（开发中）
+## 外部发布方式（联调阶段）
 
 > Gist 和 Cloudflare KV 是两条独立的发布路线，可以单独启用，也可以同时启用。发布内容仅包含测速结果 TXT，不会上传 IP 来源库、来源 URL、管理配置或日志。
 >
-> **当前状态：** 以下内容用于说明目标部署和使用流程。Gist/KV 发布适配器及 Cloudflare Worker 尚未交付，面板中暂时不能完成实际发布。请勿把下面的示例地址当作已经上线的服务。
+> **当前状态：** 主应用已加入发布 API、面板手动发布按钮和服务端适配器；Cloudflare Worker 源码及 Wrangler 配置已加入 `cloudflare-worker/`。配置好凭据并部署 Worker 后即可联调。当前尚未替你部署 Worker，也未使用真实 Gist/KV 账号完成端到端验证。
 
 <details>
 <summary>展开：GitHub Gist 发布方式</summary>
