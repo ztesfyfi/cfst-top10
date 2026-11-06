@@ -95,8 +95,8 @@ class Publisher:
         request = urllib.request.Request(url, data=body, headers=headers, method=method)
         try:
             with urllib.request.urlopen(request, timeout=20) as response:
-                data = response.read(1024 * 1024 + 1)
-                if len(data) > 1024 * 1024:
+                data = response.read(3 * 1024 * 1024 + 1)
+                if len(data) > 3 * 1024 * 1024:
                     raise PublishError("发布端响应超过 1 MiB")
                 return response.status, data
         except urllib.error.HTTPError as exc:
@@ -125,7 +125,7 @@ class Publisher:
             },
             payload,
         )
-        return {"ok": True, "updated_at": utc_now()}
+        return {"ok": True, "updated_at": utc_now(), "gist_url": f"https://gist.github.com/{gist_id}"}
 
     def publish_cloudflare(self, family: str, content: str) -> dict[str, Any]:
         base = os.getenv("CFST_CF_WORKER_URL", "").strip().rstrip("/")
