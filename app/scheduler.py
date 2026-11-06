@@ -29,6 +29,7 @@ class Scheduler:
         self.last_run_at = self.config.pop("last_run_at", None)
         self.last_result = self.config.pop("last_result", None)
         self.enabled_since = self.config.pop("enabled_since", iso(now_utc()))
+        self.active_task_started = None
 
     @staticmethod
     def defaults() -> dict:
@@ -141,12 +142,22 @@ class Scheduler:
                     try:
                         result = self.engine.start(top_n, trigger="scheduled")
                         with self.lock:
+                            self.active_task_started = result.get("started_at")
                             self.last_result = {"status": "started", "task": result}
                             self._save()
                     except Exception as exc:
                         with self.lock:
                             self.last_result = {"status": "skipped" if "正在运行" in str(exc) else "failed",
                                                 "message": str(exc), "finished_at": iso(now_utc())}
+                            self._save()
+                with self.lock:
+                    if self.active_task_started:
+                        task = self.engine.status()
+                        if task.get("started_at") == self.active_task_started and task.get("status") not in {"running", "stopping"}:
+                            self.last_result = {"status": task.get("status"), "message": task.get("message"),
+                                                "started_at": task.get("started_at"), "finished_at": task.get("finished_at"),
+                                                "results": task.get("results", {})}
+                            self.active_task_started = None
                             self._save()
                 self.wakeup.wait(5)
                 self.wakeup.clear()
