@@ -49,7 +49,7 @@ docker compose down
 - API 提供受 Token 保护的结果下载接口。
 - 发布模块：支持 Gist 与 Cloudflare Worker/KV 独立发布、双发布、状态记录及测速成功后自动发布。
 - Cloudflare Worker 源码位于 `cloudflare-worker/`，使用 KV Binding `CFST_RESULTS` 和 Secret `CFST_UPLOAD_TOKEN`。
-- 测试：IP/CIDR 规范化、来源去重、CFST CSV 解析，以及 Gist/Cloudflare 发布 API、协议版本校验和双发布独立失败处理。
+- 测试：IP/CIDR 规范化、来源去重、CFST CSV 解析，以及 Gist/Cloudflare 发布 API、协议版本校验、双发布独立失败处理和定时调度配置持久化/校验。
 
 ## 已确认的产品方向
 
