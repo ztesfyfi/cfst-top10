@@ -39,6 +39,10 @@ class Toggle(BaseModel):
 class RunRequest(BaseModel):
     top_n: int = 10
 
+@app.on_event("shutdown")
+def shutdown_engine():
+    engine.stop()
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -170,7 +174,7 @@ def preview_sources():
         except (OSError, ValueError, UnicodeDecodeError) as exc:
             stats.append({"id":row["id"],"name":row["name"],"entries":0,"error":str(exc)})
     merged = merge_ip_sources(contents)
-    return {"sources":stats,"total_before_dedup":sum(x.get("entries",0) for x in stats),
+    return {"sources":stats,"total_before_dedup":sum(x.get("entries",0) + x.get("duplicates",0) for x in stats),
             "duplicates":merged.duplicates,"invalid":merged.invalid,
             "total_after_dedup":len(merged.entries),
             "ipv4":sum(1 for x in merged.entries if ipaddress.ip_network(x,strict=False).version==4),
