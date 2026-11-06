@@ -5,6 +5,7 @@ import os
 import re
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ class Publisher:
     def __init__(self, data_dir: Path):
         self.data_dir = data_dir
         self.state_file = data_dir / "publish-state.json"
+        self.config_file = data_dir / "publish-config.json"
 
     def _state(self) -> dict[str, Any]:
         try:
@@ -38,13 +40,57 @@ class Publisher:
             pass
         return {"gist": {}, "cloudflare": {}}
 
+    def _config(self) -> dict[str, str]:
+        try:
+            stored = json.loads(self.config_file.read_text(encoding="utf-8"))
+            if not isinstance(stored, dict):
+                stored = {}
+        except (OSError, ValueError):
+            stored = {}
+        return {
+            "gist_id": str(stored.get("gist_id") or os.getenv("CFST_GIST_ID", "")).strip(),
+            "github_token": str(stored.get("github_token") or os.getenv("CFST_GITHUB_TOKEN", "")).strip(),
+            "worker_url": str(stored.get("worker_url") or os.getenv("CFST_CF_WORKER_URL", "")).strip(),
+            "worker_token": str(stored.get("worker_token") or os.getenv("CFST_CF_WORKER_TOKEN", "")).strip(),
+        }
+
+    def save_config(self, values: dict[str, Any]) -> dict[str, Any]:
+        updated = self._config()
+        for key in ("gist_id", "github_token", "worker_url", "worker_token"):
+            value = values.get(key)
+            if value is not None and str(value).strip():
+                value = str(value).strip()
+                if len(value) > 4096 or any(ord(ch) < 32 for ch in value):
+                    raise PublishError("配置值长度或字符不合法")
+                updated[key] = value
+        if updated["gist_id"] and not GIST_ID_RE.fullmatch(updated["gist_id"]):
+            raise PublishError("Gist ID 格式不正确")
+        if updated["worker_url"]:
+            parsed = urlsplit(updated["worker_url"])
+            if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
+                raise PublishError("Worker 地址必须是有效 HTTPS 根地址")
+            updated["worker_url"] = updated["worker_url"].rstrip("/")
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        temp = self.config_file.with_suffix(".tmp")
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(updated, handle, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp, 0o600)
+        os.replace(temp, self.config_file)
+        return self.status()
+
     def status(self) -> dict[str, Any]:
         state = self._state()
+        values = self._config()
         config = {
-            "gist": bool(os.getenv("CFST_GIST_ID") and os.getenv("CFST_GITHUB_TOKEN")),
-            "cloudflare": bool(os.getenv("CFST_CF_WORKER_URL") and os.getenv("CFST_CF_WORKER_TOKEN")),
+            "gist": bool(values["gist_id"] and values["github_token"]),
+            "cloudflare": bool(values["worker_url"] and values["worker_token"]),
         }
         return {
+            "gist_id": values["gist_id"],
+            "worker_url": values["worker_url"],
             "targets": {
                 name: {
                     "configured": config[name],
@@ -106,8 +152,9 @@ class Publisher:
             raise PublishError(f"远端连接失败: {exc}") from exc
 
     def publish_gist(self, family: str, content: str) -> dict[str, Any]:
-        gist_id = os.getenv("CFST_GIST_ID", "").strip()
-        token = os.getenv("CFST_GITHUB_TOKEN", "").strip()
+        config = self._config()
+        gist_id = config["gist_id"]
+        token = config["github_token"]
         if not GIST_ID_RE.fullmatch(gist_id) or not token:
             raise PublishError("Gist 未配置：检查 CFST_GIST_ID 和 CFST_GITHUB_TOKEN")
         payload = json.dumps({
@@ -128,8 +175,9 @@ class Publisher:
         return {"ok": True, "updated_at": utc_now(), "gist_url": f"https://gist.github.com/{gist_id}"}
 
     def publish_cloudflare(self, family: str, content: str) -> dict[str, Any]:
-        base = os.getenv("CFST_CF_WORKER_URL", "").strip().rstrip("/")
-        token = os.getenv("CFST_CF_WORKER_TOKEN", "").strip()
+        config = self._config()
+        base = config["worker_url"].rstrip("/")
+        token = config["worker_token"]
         if not base.startswith("https://") or not token:
             raise PublishError("Cloudflare 未配置：检查 HTTPS 的 CFST_CF_WORKER_URL 和 CFST_CF_WORKER_TOKEN")
         self._request(
@@ -163,10 +211,11 @@ class Publisher:
     def publish_all(self, family: str) -> dict[str, Any]:
         outcomes = {}
         for target in ("gist", "cloudflare"):
+            config = self._config()
             configured = (
-                bool(os.getenv("CFST_GIST_ID") and os.getenv("CFST_GITHUB_TOKEN"))
+                bool(config["gist_id"] and config["github_token"])
                 if target == "gist"
-                else bool(os.getenv("CFST_CF_WORKER_URL") and os.getenv("CFST_CF_WORKER_TOKEN"))
+                else bool(config["worker_url"] and config["worker_token"])
             )
             if not configured:
                 outcomes[target] = {"status": "not_configured"}
