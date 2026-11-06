@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .db import Database
 from .sources import merge_ip_sources, read_text_file
+from .publish import Publisher
 
 
 def utc_now() -> str:
@@ -53,6 +54,7 @@ class EngineManager:
         self.data_dir = data_dir
         self.engine_dir = engine_dir
         self.db = db
+        self.publisher = Publisher(data_dir)
         self.log_dir = data_dir / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = self.log_dir / "engine.log"
@@ -211,6 +213,11 @@ class EngineManager:
                     results[family] = {"status": "success", "count": len(selected),
                                        "file": target.name}
                     self._log(f"{family} 结果已原子保存：{len(selected)} 个 IP")
+                    if os.getenv("CFST_AUTO_PUBLISH", "false").strip().lower() in {"1", "true", "yes", "on"}:
+                        publish_status = self.publisher.publish_all(family)
+                        results[family]["publish"] = publish_status
+                        for target, outcome in publish_status.items():
+                            self._log(f"{family} 自动发布 {target}: {outcome.get('status')}")
 
             with self._lock:
                 self._state.update({"status": "completed", "message": "测速完成",
