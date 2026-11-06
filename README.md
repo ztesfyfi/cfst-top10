@@ -72,4 +72,21 @@ sh -c 'wget -qO- https://raw.githubusercontent.com/ztesfyfi/cfst-top10/main/inst
 - 不要把 SSH 私钥上传到 GitHub。私钥仅保存在运行安装程序的本机。
 - 本项目只负责在本机运行 CFST、筛选结果及按需上传；IP 的连通性和速度受网络环境影响。
 
+## 下一阶段升级规划
+
+项目正在规划升级为完整的 CFST Web 管理系统。当前仓库中的安装脚本和 SSH/SCP 远程发布说明仍对应现有版本；新架构尚未实现，请勿将规划功能当作当前版本功能使用。
+
+已确定的下一阶段方向：
+
+- 增加统一 Web 管理面板，管理 IP 来源、测速、结果、日志、定时任务和发布。
+- IP 来源分为项目自带 IP 库、用户 TXT 文件和 URL 来源；测速前合并、校验、去重，自带库停用时仍保留本地。
+- 支持 IPv4/IPv6、TOP N、零丢包过滤、下载速度排序、手动测速和定时测速。
+- 发布内容为 IPv4、IPv6 两份纯 TXT 文件，不生成代理订阅 YAML 或 Base64。
+- 发布目标采用 GitHub Gist 与 Cloudflare Workers KV 两条独立路线，支持单独启用或双发布；第一版不采用 R2。
+- 发布失败不影响本地结果，也不破坏另一条路线的成功结果。
+
+详细需求、架构约束和开发顺序见[项目升级方案](docs/PROJECT-PLAN.md)。
+
+说明：本次只记录升级方案，不代表 Web 管理系统或新发布功能已经交付。Cloudflare Worker 项目及 Cloudflare 侧配置暂缓处理。
+
 上游项目：[XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest)。
