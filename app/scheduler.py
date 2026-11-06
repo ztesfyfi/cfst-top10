@@ -59,7 +59,10 @@ class Scheduler:
             hour, minute = map(int, value.split(":"))
             if not (0 <= hour <= 23 and 0 <= minute <= 59):
                 raise ValueError("每日执行时间无效")
-        ZoneInfo(str(cfg["timezone"]))
+        try:
+            ZoneInfo(str(cfg["timezone"]))
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("时区名称无效，请使用 IANA 时区名称") from exc
 
     def _save(self) -> None:
         payload = {**self.config, "last_run_at": self.last_run_at,
