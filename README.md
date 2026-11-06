@@ -1,92 +1,48 @@
-# CFST 优选 IP 一键安装
+# CFST TOP10
 
-## 一行安装
+CFST 优选 IP 管理系统。项目计划从现有脚本形态升级为 Docker 化 Web 应用，继续使用 CloudflareSpeedTest（CFST）作为底层测速引擎。
 
-在 Linux NAS、OpenWrt 或 Linux 服务器终端执行。下面的启动命令会先尝试使用系统现有的下载工具；若缺少 Bash，会通过系统包管理器安装 Bash，再启动安装程序：
+> **当前状态：架构规划阶段。** Docker Compose 版本尚未交付。仓库中现存的旧版 Bash 安装脚本属于历史实现，不代表新版本部署方式；新版本不再提供 Bash 宿主机安装或运行方案。
 
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ztesfyfi/cfst-top10/main/install.sh)
-```
+## 正式部署方向
 
-```bash
-sh -c 'wget -qO- https://raw.githubusercontent.com/ztesfyfi/cfst-top10/main/install.sh | sh'
-```
+新版本确定采用 **Docker + Docker Compose**，作为唯一正式部署方式：
 
-安装程序会引导你选择使用方式。不会预设项目作者的 VPS、域名、端口、用户名或公开地址。
+- 提供 Dockerfile、Compose 配置和环境变量示例。
+- 目标支持 `linux/amd64`、`linux/arm64`，以实际 CI 构建和测试结果为准。
+- Web 面板、后端 API、CFST 测速引擎、来源管理和定时任务在容器内运行。
+- 使用 Docker Volume 或 bind mount 持久化配置、来源、缓存、测速结果、任务状态和日志。
+- 定时任务由容器内调度器管理，不依赖宿主机 crontab。
+- 容器默认非 root 运行，提供健康检查、日志轮转、备份恢复和升级/回滚流程。
+- 默认使用普通 Docker 网络，不强制 host 网络或 privileged 权限。
 
-## 两种使用模式
+## 规划功能
 
-### 1. 本地使用（不需要 VPS）
+- Web 管理面板：仪表盘、IP 来源、测速、结果、日志、发布和定时任务。
+- IP 来源：项目自带 IP 库、用户 TXT 文件、URL 来源；测速前统一校验、合并和去重。
+- 自带 IP 库关闭测速时仍保留本地，不会被删除。
+- 支持 IPv4、IPv6、TOP N、零丢包过滤、下载速度排序。
+- 支持手动测速、停止测速、实时进度和定时任务。
+- 测速结果分别生成 `ipv4.txt`、`ipv6.txt`，每行一个纯 IP，不生成代理订阅 YAML 或 Base64。
+- 发布采用 GitHub Gist 与 Cloudflare Workers KV 两条独立路线，可单独启用或双发布；第一版不采用 R2。
+- 发布失败不影响本地结果，也不破坏另一条路线已经成功发布的结果。
 
-选择“本地使用”即可。程序会下载 CFST、建立运行脚本和管理菜单，优选结果保存在：
+## 部署和迁移原则
 
-- 结果文件：`~/CFST/ips.txt`
-- 最近测速日志：`~/CFST/cfst-run.log`
-- 定时任务日志：`~/CFST/cron.log`
+- Docker Compose 是新版本唯一正式部署入口。
+- 不再开发新的 Bash 宿主机安装器、宿主机管理菜单或宿主机 Cron 部署方式。
+- 旧版 Bash 脚本仅在迁移过渡期保留；Docker 版本完成后，新版本文档和发布流程将以 Compose 为准。
+- 规划提供旧版 `~/CFST` 配置、IP 来源、测速结果和旧定时任务迁移到 Docker 持久化目录的方案。
+- 默认不删除旧数据；迁移前备份，迁移成功后再由用户确认停用旧任务。
 
-无需配置 SSH、域名、Nginx 或 HTTPS。
+## 项目升级方案
 
-### 2. VPS 远程发布（可选）
+完整需求、架构约束、安全要求、Docker 运行规范及开发顺序见：
 
-选择“VPS 远程发布”后，按提示填写自己的：
+[docs/PROJECT-PLAN.md](docs/PROJECT-PLAN.md)
 
-- VPS 主机名或 IP
-- SSH 端口和登录用户名
-- VPS 上已经创建且允许该用户写入的目录
-- 可选的结果公开 URL
+## 当前范围说明
 
-安装程序会生成专用 SSH 密钥，并显示公钥。将公钥添加到 VPS 对应登录用户的 `~/.ssh/authorized_keys` 后，脚本即可通过 SCP 上传 `ips.txt`。
+当前提交仅记录项目规划和架构决策，不代表 Web 面板、Docker 镜像、Compose 部署或 Gist/KV 发布功能已经实现。Cloudflare Worker 独立项目及 Cloudflare 侧配置暂缓处理。
 
-如果希望通过网页访问结果，需要自行准备 Web 服务，并将公开 URL 指向上传后的文件。安装程序不会替你购买 VPS/域名，也不会自动创建云服务器或配置未知系统上的 Nginx/HTTPS。
-
-## 优选数量不限制为 10 个
-
-安装时输入想保留的 IP 数量，默认 10 个，允许输入 1 到 100000 的正整数。程序筛选零丢包地址并按下载速度从高到低排序；实际结果数量取决于测速结果。
-
-之后也可在管理菜单中修改数量。
-
-## 安装后怎么用
-
-启动管理菜单：
-
-```bash
-~/CFST/cfst-manager.sh
-```
-
-菜单支持：
-
-1. 立即测速并保存/发布
-2. 查看本地 IP 列表
-3. 修改每次保留的 IP 数量
-4. 查看最近测速日志
-5. 查看自动任务日志
-6. 查看定时任务
-
-安装程序会设置每天凌晨 03:30 自动测速。运行时间可在系统 crontab 中自行调整。
-
-## 注意事项
-
-- 支持 Linux x86_64 和 ARM64（aarch64）。
-- 安装程序会检测并尝试自动安装缺少的 Bash 运行依赖、curl、tar、Python 3、crontab；远程模式还会按需安装 SSH/SCP 工具。自动安装依赖需要可用的软件源和网络。
-- OpenWrt 的包名和可用组件可能随版本、架构及软件源不同；若系统软件源没有相应包，脚本会明确报错，不会静默跳过依赖。
-- 不要把 SSH 私钥上传到 GitHub。私钥仅保存在运行安装程序的本机。
-- 本项目只负责在本机运行 CFST、筛选结果及按需上传；IP 的连通性和速度受网络环境影响。
-
-## 下一阶段升级规划
-
-项目正在规划升级为完整的 CFST Web 管理系统。当前仓库中的安装脚本和 SSH/SCP 远程发布说明仍对应现有版本；新架构尚未实现，请勿将规划功能当作当前版本功能使用。
-
-已确定的下一阶段方向：
-
-- 增加统一 Web 管理面板，管理 IP 来源、测速、结果、日志、定时任务和发布。
-- IP 来源分为项目自带 IP 库、用户 TXT 文件和 URL 来源；测速前合并、校验、去重，自带库停用时仍保留本地。
-- 支持 IPv4/IPv6、TOP N、零丢包过滤、下载速度排序、手动测速和定时测速。
-- 发布内容为 IPv4、IPv6 两份纯 TXT 文件，不生成代理订阅 YAML 或 Base64。
-- 发布目标采用 GitHub Gist 与 Cloudflare Workers KV 两条独立路线，支持单独启用或双发布；第一版不采用 R2。
-- 发布失败不影响本地结果，也不破坏另一条路线的成功结果。
-
-详细需求、架构约束和开发顺序见[项目升级方案](docs/PROJECT-PLAN.md)。
-
-说明：本次只记录升级方案，不代表 Web 管理系统或新发布功能已经交付。Cloudflare Worker 项目及 Cloudflare 侧配置暂缓处理。
-
-上游项目：[XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest)。
+上游测速引擎：[XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest)。
