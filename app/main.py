@@ -12,6 +12,7 @@ from .config import Settings
 from .db import Database
 from .engine import EngineManager
 from .sources import merge_ip_sources, parse_ip_list, read_text_file
+from .publish import Publisher, PublishError
 
 settings = Settings.from_env()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -27,6 +28,7 @@ with db.session() as conn:
     )
 
 engine = EngineManager(settings.data_dir, settings.engine_dir, db)
+publisher = Publisher(settings.data_dir)
 app = FastAPI(title="CFST TOP10", version="0.2.0")
 
 def auth(authorization: str | None = Header(default=None)):
@@ -179,3 +181,23 @@ def preview_sources():
             "total_after_dedup":len(merged.entries),
             "ipv4":sum(1 for x in merged.entries if ipaddress.ip_network(x,strict=False).version==4),
             "ipv6":sum(1 for x in merged.entries if ipaddress.ip_network(x,strict=False).version==6)}
+
+
+@app.get("/api/publish/status", dependencies=[Depends(auth)])
+def publish_status():
+    return publisher.status()
+
+
+@app.post("/api/publish/{target}/{family}", dependencies=[Depends(auth)])
+def publish_result(target: str, family: str):
+    try:
+        return publisher.publish(target, family)
+    except PublishError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/publish/all/{family}", dependencies=[Depends(auth)])
+def publish_all_results(family: str):
+    if family not in {"ipv4", "ipv6"}:
+        raise HTTPException(404, "未知结果类型")
+    return publisher.publish_all(family)
