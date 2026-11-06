@@ -66,7 +66,7 @@ def test_publish_all_runs_destinations_independently(tmp_path: Path, monkeypatch
 
 def test_result_validation_rejects_wrong_address_family(tmp_path: Path):
     publisher = make_publisher(tmp_path)
-    (tmp_path / "ipv4.txt").write_text("2001:db8::1\\n", encoding="ascii")
+    (tmp_path / "ipv4.txt").write_text("2001:db8::1\n", encoding="ascii")
     with pytest.raises(PublishError, match="错误协议版本"):
         publisher._read_result("ipv4")
 
