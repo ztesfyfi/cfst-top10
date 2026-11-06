@@ -49,7 +49,7 @@ def index():
 <title>CFST TOP10</title><style>body{font:15px system-ui;background:#0b1220;color:#e8eefb;margin:28px}main{max-width:850px;margin:auto}section{background:#152039;padding:18px;border:1px solid #2b3b5b;border-radius:12px;margin:14px 0}input,button{padding:9px;border-radius:7px}pre{white-space:pre-wrap}</style>
 <main><h1>CFST TOP10</h1><p>Docker 开发版 · IP 来源管理</p><section><input id="token" type="password" placeholder="管理 Token"><button onclick="load()">连接</button><p id="status">尚未连接</p></section>
 <section><h2>来源列表</h2><div id="sources"></div><h3>上传 TXT 来源</h3><input id="name" placeholder="来源名称"><input id="file" type="file" accept=".txt"><button onclick="upload()">上传</button></section>
-<section><h2>合并统计</h2><button onclick="preview()">预览合并</button><pre id="result"></pre></section></main>
+<section><h2>测速执行</h2><input id="topn" type="number" min="1" max="1000" value="10"><button onclick="runEngine()">开始测速</button> <button onclick="stopEngine()">停止测速</button> <button onclick="engineStatus()">刷新状态</button> <button onclick="downloadResult('ipv4')">下载 IPv4</button> <button onclick="downloadResult('ipv6')">下载 IPv6</button><pre id="engine">尚未执行</pre></section><section><h2>合并统计</h2><button onclick="preview()">预览合并</button><pre id="result"></pre></section></main>
 <script>
 const $=x=>document.getElementById(x), headers=()=>({Authorization:'Bearer '+$('token').value});
 async function req(path,opt={}){let r=await fetch(path,{...opt,headers:{...headers(),...(opt.headers||{})}});let j=await r.json();if(!r.ok)throw Error(j.detail||'请求失败');return j}
@@ -58,6 +58,10 @@ async function upload(){try{let f=$('file').files[0];if(!f)throw Error('请选�
 async function toggle(id,enabled){try{await req('/api/sources/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});load()}catch(e){alert(e.message)}}
 async function removeSource(id){if(!confirm('删除这个来源？'))return;try{await req('/api/sources/'+id,{method:'DELETE'});load()}catch(e){alert(e.message)}}
 async function preview(){try{$('result').textContent=JSON.stringify(await req('/api/sources/preview'),null,2)}catch(e){$('result').textContent=e.message}}
+async function runEngine(){try{$('engine').textContent=JSON.stringify(await req('/api/engine/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({top_n:Number($('topn').value)})}),null,2)}catch(e){alert(e.message)}}
+async function stopEngine(){try{$('engine').textContent=JSON.stringify(await req('/api/engine/stop',{method:'POST'}),null,2)}catch(e){alert(e.message)}}
+async function engineStatus(){try{let s=await req('/api/engine/status'),l=await req('/api/engine/logs');$('engine').textContent=JSON.stringify(s,null,2)+'\n\n'+l.lines.join('\n')}catch(e){$('engine').textContent=e.message}}
+async function downloadResult(family){try{let r=await fetch('/api/results/'+family,{headers:headers()});if(!r.ok)throw Error((await r.json()).detail||'下载失败');let b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=family+'.txt';a.click();URL.revokeObjectURL(u)}catch(e){alert(e.message)}}
 </script></html>"""
 
 @app.get("/api/sources", dependencies=[Depends(auth)])
