@@ -1,0 +1,7 @@
+name = "cfst-top10-publisher"
+main = "src/worker.js"
+compatibility_date = "2026-11-06"
+
+[[kv_namespaces]]
+binding = "CFST_RESULTS"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
