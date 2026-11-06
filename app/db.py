@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 
 SCHEMA = """
@@ -17,7 +18,7 @@ class Database:
     def __init__(self, data_dir: Path):
         data_dir.mkdir(parents=True, exist_ok=True)
         self.path = data_dir / "cfst.sqlite3"
-        with self.connect() as conn:
+        with self.session() as conn:
             conn.executescript(SCHEMA)
 
     def connect(self):
@@ -25,21 +26,33 @@ class Database:
         conn.row_factory = sqlite3.Row
         return conn
 
+    @contextmanager
+    def session(self):
+        conn = self.connect()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def list_sources(self):
-        with self.connect() as conn:
+        with self.session() as conn:
             return [dict(r) for r in conn.execute(
                 "SELECT * FROM sources ORDER BY kind, created_at"
             ).fetchall()]
 
     def add_file_source(self, source_id, name, path):
-        with self.connect() as conn:
+        with self.session() as conn:
             conn.execute(
                 "INSERT INTO sources(id,name,kind,path,enabled) VALUES(?,?,'file',?,1)",
                 (source_id, name, path),
             )
 
     def set_enabled(self, source_id, enabled):
-        with self.connect() as conn:
+        with self.session() as conn:
             cur = conn.execute(
                 "UPDATE sources SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (int(enabled), source_id),
@@ -47,6 +60,6 @@ class Database:
             return cur.rowcount == 1
 
     def delete_file_source(self, source_id):
-        with self.connect() as conn:
+        with self.session() as conn:
             cur = conn.execute("DELETE FROM sources WHERE id=? AND kind='file'", (source_id,))
             return cur.rowcount == 1
