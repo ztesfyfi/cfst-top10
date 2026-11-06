@@ -41,6 +41,12 @@ class Toggle(BaseModel):
 class RunRequest(BaseModel):
     top_n: int = 10
 
+class PublishConfigRequest(BaseModel):
+    gist_id: str | None = None
+    github_token: str | None = None
+    worker_url: str | None = None
+    worker_token: str | None = None
+
 @app.on_event("shutdown")
 def shutdown_engine():
     engine.stop()
@@ -55,7 +61,13 @@ def index():
 <title>CFST TOP10</title><style>body{font:15px system-ui;background:#0b1220;color:#e8eefb;margin:28px}main{max-width:850px;margin:auto}section{background:#152039;padding:18px;border:1px solid #2b3b5b;border-radius:12px;margin:14px 0}input,button{padding:9px;border-radius:7px}pre{white-space:pre-wrap}</style>
 <main><h1>CFST TOP10</h1><p>Docker 开发版 · IP 来源管理</p><section><input id="token" type="password" placeholder="管理 Token"><button onclick="load()">连接</button><p id="status">尚未连接</p></section>
 <section><h2>来源列表</h2><div id="sources"></div><h3>上传 TXT 来源</h3><input id="name" placeholder="来源名称"><input id="file" type="file" accept=".txt"><button onclick="upload()">上传</button></section>
-<section><h2>测速执行</h2><input id="topn" type="number" min="1" max="1000" value="10"><button onclick="runEngine()">开始测速</button> <button onclick="stopEngine()">停止测速</button> <button onclick="engineStatus()">刷新状态</button> <button onclick="downloadResult('ipv4')">下载 IPv4</button> <button onclick="downloadResult('ipv6')">下载 IPv6</button><pre id="engine">尚未执行</pre></section><section><h2>发布管理</h2><p id="publishStatus">发布配置状态未加载</p><button onclick="publishStatus()">刷新发布状态</button><p>IPv4：<button onclick="publishOne('gist','ipv4')">发布到 Gist</button> <button onclick="publishOne('cloudflare','ipv4')">发布到 CF</button> <button onclick="publishOne('all','ipv4')">双发布</button></p><p>IPv6：<button onclick="publishOne('gist','ipv6')">发布到 Gist</button> <button onclick="publishOne('cloudflare','ipv6')">发布到 CF</button> <button onclick="publishOne('all','ipv6')">双发布</button></p><pre id="publishResult"></pre><small>密钥通过服务端环境变量配置，不会发送到浏览器。</small></section><section><h2>合并统计</h2><button onclick="preview()">预览合并</button><pre id="result"></pre></section></main>
+<section><h2>测速执行</h2><input id="topn" type="number" min="1" max="1000" value="10"><button onclick="runEngine()">开始测速</button> <button onclick="stopEngine()">停止测速</button> <button onclick="engineStatus()">刷新状态</button> <button onclick="downloadResult('ipv4')">下载 IPv4</button> <button onclick="downloadResult('ipv6')">下载 IPv6</button><pre id="engine">尚未执行</pre></section><section><h2>发布管理</h2><p id="publishStatus">发布配置状态未加载</p><button onclick="publishStatus()">刷新发布状态</button><p>IPv4：<button onclick="publishOne('gist','ipv4')">发布到 Gist</button> <button onclick="publishOne('cloudflare','ipv4')">发布到 CF</button> <button onclick="publishOne('all','ipv4')">双发布</button></p><p>IPv6：<button onclick="publishOne('gist','ipv6')">发布到 Gist</button> <button onclick="publishOne('cloudflare','ipv6')">发布到 CF</button> <button onclick="publishOne('all','ipv6')">双发布</button></p><pre id="publishResult"></pre><small>密钥通过服务端环境变量配置，不会发送到浏览器。</small></section><section><h2>合并统计</h2><button onclick="preview()">预览合并</button><pre id="result"></pre></section>
+<section><h2>发布服务凭据配置</h2><p>Token 输入框始终显示，默认以星号遮罩；点击“显示/隐藏”切换。已保存的 Token 不会回传浏览器，留空表示保持原值。</p>
+<h3>GitHub Gist</h3><p>Gist ID<br><input id="gistId" autocomplete="off" placeholder="填写 Gist ID"></p>
+<p>GitHub Token<br><input id="gistToken" type="password" autocomplete="new-password" placeholder="尚未配置或留空保持已保存值"> <button type="button" onclick="toggleSecret('gistToken',this)">显示</button></p>
+<h3>Cloudflare Worker</h3><p>Worker HTTPS 地址<br><input id="workerUrl" type="url" autocomplete="url" placeholder="https://你的 Worker 域名"></p>
+<p>Worker 上传 Token<br><input id="workerToken" type="password" autocomplete="new-password" placeholder="尚未配置或留空保持已保存值"> <button type="button" onclick="toggleSecret('workerToken',this)">显示</button></p>
+<p><button onclick="savePublishConfig()">保存发布配置</button> <button onclick="loadPublishConfig()">刷新配置状态</button></p><pre id="configStatus">尚未读取配置状态</pre></section></main>
 <script>
 const $=x=>document.getElementById(x), headers=()=>({Authorization:'Bearer '+$('token').value});
 async function req(path,opt={}){let r=await fetch(path,{...opt,headers:{...headers(),...(opt.headers||{})}});let j=await r.json();if(!r.ok)throw Error(j.detail||'请求失败');return j}
@@ -69,6 +81,11 @@ async function stopEngine(){try{$('engine').textContent=JSON.stringify(await req
 async function engineStatus(){try{let s=await req('/api/engine/status'),l=await req('/api/engine/logs');$('engine').textContent=JSON.stringify(s,null,2)+'\n\n'+l.lines.join('\n')}catch(e){$('engine').textContent=e.message}}
 async function downloadResult(family){try{let r=await fetch('/api/results/'+family,{headers:headers()});if(!r.ok)throw Error((await r.json()).detail||'下载失败');let b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=family+'.txt';a.click();URL.revokeObjectURL(u)}catch(e){alert(e.message)}}
 async function publishStatus(){try{let s=await req('/api/publish/status');$('publishStatus').textContent=JSON.stringify(s.targets,null,2)}catch(e){$('publishStatus').textContent=e.message}}
+
+function toggleSecret(id,button){let el=$(id),show=el.type==='password';el.type=show?'text':'password';button.textContent=show?'隐藏':'显示'}
+async function loadPublishConfig(){try{let s=await req('/api/publish/status'),g=s.targets.gist,c=s.targets.cloudflare;$('gistId').value=s.gist_id||'';$('workerUrl').value=s.worker_url||'';$('gistToken').value='';$('workerToken').value='';$('gistToken').placeholder=g.configured?'已保存（留空保持不变）':'尚未配置，请输入 Token';$('workerToken').placeholder=c.configured?'已保存（留空保持不变）':'尚未配置，请输入 Token';$('configStatus').textContent='Gist：'+(g.configured?'已配置':'未配置')+'\\nCloudflare：'+(c.configured?'已配置':'未配置')}catch(e){$('configStatus').textContent=e.message}}
+async function savePublishConfig(){try{let r=await req('/api/publish/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({gist_id:$('gistId').value,github_token:$('gistToken').value,worker_url:$('workerUrl').value,worker_token:$('workerToken').value})});$('gistToken').value='';$('workerToken').value='';await loadPublishConfig();await publishStatus();$('configStatus').textContent='配置已保存。\\n'+JSON.stringify(r,null,2)}catch(e){$('configStatus').textContent=e.message}}
+
 async function publishOne(target,family){try{let path=target==='all'?'/api/publish/all/'+family:'/api/publish/one/'+target+'/'+family;let r=await req(path,{method:'POST'});$('publishResult').textContent=JSON.stringify(r,null,2);await publishStatus()}catch(e){$('publishResult').textContent=e.message;await publishStatus()}}
 </script></html>"""
 
@@ -188,6 +205,14 @@ def preview_sources():
 @app.get("/api/publish/status", dependencies=[Depends(auth)])
 def publish_status():
     return publisher.status()
+
+
+@app.put("/api/publish/config", dependencies=[Depends(auth)])
+def save_publish_config(body: PublishConfigRequest):
+    try:
+        return publisher.save_config(body.model_dump(exclude_unset=True))
+    except PublishError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/api/publish/one/{target}/{family}", dependencies=[Depends(auth)])
