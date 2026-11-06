@@ -1,6 +1,6 @@
 # CFST TOP10 项目升级方案
 
-> 本文记录截至 2026-11-06 已确认的升级需求与架构决策，并作为实现验收基线。Docker 第一阶段代码已提交：容器骨架、Bearer Token、SQLite 来源持久化、TXT 来源管理、合并预览及 CFST 执行 API 已进入实现；功能是否可用以 README 和 GitHub Actions 实际验证结果为准。URL 来源、定时任务和发布后端仍未完成。
+> 本文记录截至 2026-11-06 已确认的升级需求与架构决策，并作为实现验收基线。Docker 第一阶段代码已提交：容器骨架、Bearer Token、SQLite 来源持久化、TXT 来源管理、合并预览及 CFST 执行 API 已进入实现；功能是否可用以 README 和 GitHub Actions 实际验证结果为准。URL 来源、定时任务仍未完成；Gist/Cloudflare Worker-KV 发布代码已提交，待 CI 与真实账号联调验收。
 
 ## 1. 项目目标与范围
 
@@ -8,7 +8,7 @@
 
 主项目仓库：`ztesfyfi/cfst-top10`
 
-本阶段只规划和改造主项目。Cloudflare Worker 的独立项目、Worker 部署及 Cloudflare 资源配置暂缓处理；主项目通过抽象发布接口预留对接能力。最终交付形态确定为 Docker 化应用，以 Docker Compose 作为正式且唯一的部署方式，不再提供 Bash 宿主机安装/运行方案。
+本阶段只规划和改造主项目。Cloudflare Worker 采用独立部署单元（`cloudflare-worker/`），主应用通过 HTTPS Bearer Token 上传到 Worker，再由 Worker 写入 KV；Worker 部署及 Cloudflare 资源配置仍由用户自行执行。最终交付形态确定为 Docker 化应用，以 Docker Compose 作为正式且唯一的部署方式，不再提供 Bash 宿主机安装/运行方案。
 
 目标能力：
 
@@ -130,7 +130,7 @@ URL 来源应支持定时/手动获取。获取失败时保留最近一次成功
 
 主项目的测速核心不应直接耦合 Gist 或 Worker 的实现细节。建议定义统一发布适配层，由不同后端分别实现上传、更新、状态查询和错误处理。双发布模式下两个后端独立执行并分别报告结果。
 
-Cloudflare Worker 的独立项目和具体接口细节留待后续阶段设计；主项目只预留配置项和适配器边界，不在本次提交中部署或依赖尚未完成的 Worker。
+已实现 `app/publish.py` 发布适配层：Gist 使用 GitHub Gist API PATCH，Cloudflare 使用 Worker 的固定文件 PUT 路由；支持单独发布、双发布、状态持久化和测速成功后的可选自动发布。Worker 源码在 `cloudflare-worker/`，KV Binding 固定为 `CFST_RESULTS`，上传 Secret 为 `CFST_UPLOAD_TOKEN`。仍需通过 CI 和真实账号联调验证。
 
 ## 6. Web 管理面板
 
@@ -244,5 +244,5 @@ docker compose down
 9. 完成安全审查、自动化测试、容器生命周期测试和文档；
 10. 提供旧版数据迁移路径，正式切换为 Docker Compose 唯一部署方式。
 
-当前开发仅在 GitHub 仓库内进行代码和 CI 构建验证；不连接 VPS，不创建或部署 Cloudflare Worker，不配置 KV。
+当前开发仅在 GitHub 仓库内进行代码和 CI 构建验证；不连接 VPS，不替用户部署 Cloudflare Worker，不创建或配置用户的 KV Namespace。
 
