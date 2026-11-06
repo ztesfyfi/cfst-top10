@@ -142,7 +142,7 @@ class Publisher:
             },
             content.encode("ascii"),
         )
-        return {"ok": True, "updated_at": utc_now()}
+        return {"ok": True, "updated_at": utc_now(), "url": f"{base}/{FILENAME_RE[family]}"}
 
     def publish(self, target: str, family: str) -> dict[str, Any]:
         if target not in {"gist", "cloudflare"}:
