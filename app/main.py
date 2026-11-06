@@ -69,7 +69,7 @@ async function stopEngine(){try{$('engine').textContent=JSON.stringify(await req
 async function engineStatus(){try{let s=await req('/api/engine/status'),l=await req('/api/engine/logs');$('engine').textContent=JSON.stringify(s,null,2)+'\n\n'+l.lines.join('\n')}catch(e){$('engine').textContent=e.message}}
 async function downloadResult(family){try{let r=await fetch('/api/results/'+family,{headers:headers()});if(!r.ok)throw Error((await r.json()).detail||'下载失败');let b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=family+'.txt';a.click();URL.revokeObjectURL(u)}catch(e){alert(e.message)}}
 async function publishStatus(){try{let s=await req('/api/publish/status');$('publishStatus').textContent=JSON.stringify(s.targets,null,2)}catch(e){$('publishStatus').textContent=e.message}}
-async function publishOne(target,family){try{let path=target==='all'?'/api/publish/all/'+family:'/api/publish/'+target+'/'+family;let r=await req(path,{method:'POST'});$('publishResult').textContent=JSON.stringify(r,null,2);await publishStatus()}catch(e){$('publishResult').textContent=e.message;await publishStatus()}}
+async function publishOne(target,family){try{let path=target==='all'?'/api/publish/all/'+family:'/api/publish/one/'+target+'/'+family;let r=await req(path,{method:'POST'});$('publishResult').textContent=JSON.stringify(r,null,2);await publishStatus()}catch(e){$('publishResult').textContent=e.message;await publishStatus()}}
 </script></html>"""
 
 @app.get("/api/sources", dependencies=[Depends(auth)])
@@ -190,7 +190,7 @@ def publish_status():
     return publisher.status()
 
 
-@app.post("/api/publish/{target}/{family}", dependencies=[Depends(auth)])
+@app.post("/api/publish/one/{target}/{family}", dependencies=[Depends(auth)])
 def publish_result(target: str, family: str):
     try:
         return publisher.publish(target, family)
