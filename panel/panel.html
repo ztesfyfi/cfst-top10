@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CFST TOP10 管理面板</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#121a2d;--line:#26334d;--muted:#91a0bb;--text:#e8eefb;--blue:#6ea8fe;--green:#35c78a;--red:#ff7373}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#172443,#0b1020 55%);color:var(--text);font:14px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:auto;padding:26px 18px 50px}.head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:22px}.brand{font-size:22px;font-weight:750;letter-spacing:.3px}.sub{color:var(--muted);font-size:12px}.pill{border:1px solid #245a49;color:#73e0b1;background:#103326;padding:5px 10px;border-radius:30px;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}.card{background:linear-gradient(145deg,#17223a,#111a2c);border:1px solid var(--line);border-radius:14px;padding:17px;min-width:0}.metric{font-size:28px;font-weight:750;margin-top:5px}.muted{color:var(--muted)}.section{margin-top:16px}.section h2{font-size:15px;margin:0 0 13px}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.btn{border:1px solid #38517a;background:#1a2b49;color:#eaf2ff;padding:9px 14px;border-radius:9px;cursor:pointer;font-weight:650}.btn.primary{background:#2463c7;border-color:#3478e5}.btn:disabled{opacity:.45;cursor:not-allowed}.btn.danger{background:#40212a;border-color:#75404a}.input,textarea{width:100%;background:#0b1324;color:var(--text);border:1px solid #33435f;border-radius:9px;padding:10px;font:13px ui-monospace,monospace}.input{max-width:130px}textarea{min-height:190px;resize:vertical}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.log{height:270px;overflow:auto;background:#080e19;border:1px solid #25314a;border-radius:9px;padding:12px;font:12px/1.6 ui-monospace,monospace;white-space:pre-wrap;color:#c3d2eb}.bar{height:8px;background:#27344c;border-radius:10px;overflow:hidden;margin:12px 0}.bar i{display:block;width:0;height:100%;background:linear-gradient(90deg,#3985ef,#48d2a0);transition:width .3s}.tag{font-size:12px;color:var(--muted)}.url{overflow-wrap:anywhere;color:#9ec5ff}footer{margin-top:22px;color:#7786a2;font-size:12px}
+@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}}@media(max-width:460px){main{padding:18px 12px}.metric{font-size:24px}}
+</style></head><body><main>
+<div class="head"><div><div class="brand">⚡ CFST <span style="color:#78aaff">TOP10</span></div><div class="sub">Cloudflare IP 优选 · 本地控制中心</div></div><span class="pill" id="connection">连接中</span></div>
+<div class="grid">
+<div class="card"><div class="muted">服务状态</div><div class="metric" id="state">--</div><div class="tag" id="mode">--</div></div>
+<div class="card"><div class="muted">候选 IP 数量</div><div class="metric" id="candidate">--</div><div class="tag">当前测速输入文件</div></div>
+<div class="card"><div class="muted">优选结果数量</div><div class="metric" id="result">--</div><div class="tag">本地 ips.txt</div></div>
+<div class="card"><div class="muted">保留目标数量</div><div class="metric" id="target">--</div><div class="tag">零丢包 · 下载速度排序</div></div>
+</div>
+<div class="two section">
+<section class="card"><div class="row"><h2>自选 IP 导入</h2><span class="tag">IPv4 / IPv6 · IP / CIDR</span></div>
+<textarea id="iptext" spellcheck="false" placeholder="每行一个 IP 或 CIDR&#10;104.16.0.0/13&#10;2606:4700::/32"></textarea>
+<div class="actions"><button class="btn primary" onclick="saveIPs()">保存自选 IP</button><button class="btn" onclick="document.querySelector('#file').click()">导入 TXT</button><button class="btn" onclick="loadIPs()">重新载入</button><button class="btn" onclick="resetIPs()">恢复备份</button><input id="file" type="file" accept=".txt,text/plain" hidden onchange="readFile(event)"></div><div class="tag" id="ipmsg">导入后新一轮测速将使用该列表。</div></section>
+<section class="card"><div class="row"><h2>测速与发布</h2><span class="tag" id="taskstate">空闲</span></div>
+<div class="muted">每次保留 IP 数量</div><div class="actions"><input class="input" id="count" type="number" min="1" max="100000" value="10"><button class="btn" onclick="saveCount()">保存数量</button></div>
+<div class="actions"><button class="btn primary" id="run" onclick="runTest()">▶ 开始测速并发布</button><button class="btn" onclick="downloadResult()">下载结果</button></div>
+<div class="bar"><i id="progress"></i></div><div class="tag" id="progressText">等待任务启动；进度根据测速日志更新。</div>
+<div style="margin-top:15px"><div class="muted">VPS 发布目标</div><div id="publish" style="margin-top:5px">--</div><div class="tag" id="published">公开地址：未配置</div></div></section>
+</div>
+<section class="card section"><div class="row"><h2>实时运行日志</h2><span class="tag">自动刷新 · 最近 250 行</span></div><div class="log" id="logs">等待日志……</div></section>
+<footer>CFST TOP10 · Web 管理服务默认仅监听 127.0.0.1。远程访问请使用 SSH 隧道，不建议直接暴露到公网 HTTP。</footer>
+</main>
+<script>
+let token=localStorage.getItem('cfst_token')||'';
+async function auth(){if(!token){token=prompt('请输入面板访问密钥（服务器 ~/CFST/.panel-token）')||'';if(token){localStorage.setItem('cfst_token',token)}}}
+async function api(path,opts={}){await auth();let r=await fetch(path,{...opts,headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json',...(opts.headers||{})}});let j=await r.json().catch(()=>({error:'响应解析失败'}));if(r.status===401){localStorage.removeItem('cfst_token');token='';throw Error('密钥错误，请刷新页面重新输入')}if(!r.ok)throw Error(j.error||'请求失败');return j}
+function msg(id,s){document.getElementById(id).textContent=s}
+async function refresh(){try{let s=await api('/api/status'),l=await api('/api/logs');msg('connection','已连接');msg('state',s.running?'运行中':'空闲');msg('mode',s.mode);msg('candidate',s.ip_count);msg('result',s.result_count);msg('target',s.target_count);document.getElementById('count').value=s.target_count;msg('publish',s.publish_host+' · '+s.publish_dir);msg('published',s.public_url?'公开地址：'+s.public_url:'公开地址：未配置');msg('taskstate',s.running?'测速任务执行中':'等待任务');document.getElementById('run').disabled=s.running;document.getElementById('progress').style.width=s.running?'65%':(s.result_exists?'100%':'0%');msg('progressText',s.running?'任务正在执行，日志持续刷新。':(s.result_exists?'最近一次结果已生成。':'尚无测速结果。'));let el=document.getElementById('logs');el.textContent=l.lines.join('\n')||'暂无日志';el.scrollTop=el.scrollHeight}catch(e){msg('connection','连接异常');msg('taskstate',e.message)}}
+async function loadIPs(){try{let x=await api('/api/ips');document.getElementById('iptext').value=x.content;msg('ipmsg','已载入当前 IP 文件。')}catch(e){msg('ipmsg',e.message)}}
+async function saveIPs(){try{let x=await api('/api/ips',{method:'POST',body:JSON.stringify({content:document.getElementById('iptext').value})});msg('ipmsg','保存成功：'+x.count+' 条；旧文件已备份。');refresh()}catch(e){msg('ipmsg','保存失败：'+e.message)}}
+function readFile(e){let f=e.target.files[0];if(!f)return;let r=new FileReader();r.onload=()=>{document.getElementById('iptext').value=r.result;msg('ipmsg','文件已载入，请点击“保存自选 IP”。')};r.readAsText(f)}
+async function resetIPs(){if(!confirm('恢复上一次导入前的 IP 文件？'))return;try{await api('/api/reset-ips',{method:'POST',body:'{}'});loadIPs()}catch(e){msg('ipmsg',e.message)}}
+async function saveCount(){try{let n=Number(document.getElementById('count').value);await api('/api/count',{method:'POST',body:JSON.stringify({count:n})});alert('保留数量已更新')}catch(e){alert(e.message)}}
+async function runTest(){if(!confirm('开始测速？远程模式会在测速完成后自动上传到配置的 VPS。'))return;try{await api('/api/run',{method:'POST',body:'{}'});refresh()}catch(e){alert(e.message)}}
+function downloadResult(){api('/api/status').then(()=>{let a=document.createElement('a');a.href='/api/result';a.download='ips.txt';fetch('/api/result',{headers:{Authorization:'Bearer '+token}}).then(r=>r.blob()).then(b=>{a.href=URL.createObjectURL(b);a.click();URL.revokeObjectURL(a.href)})}).catch(e=>alert(e.message))}
+loadIPs();refresh();setInterval(refresh,2500);
+</script></body></html>
