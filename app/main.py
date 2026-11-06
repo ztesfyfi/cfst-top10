@@ -13,6 +13,7 @@ from .db import Database
 from .engine import EngineManager
 from .sources import merge_ip_sources, parse_ip_list, read_text_file
 from .publish import Publisher, PublishError
+from .scheduler import Scheduler
 
 settings = Settings.from_env()
 settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -29,6 +30,7 @@ with db.session() as conn:
 
 engine = EngineManager(settings.data_dir, settings.engine_dir, db)
 publisher = Publisher(settings.data_dir)
+scheduler = Scheduler(settings.data_dir, engine)
 app = FastAPI(title="CFST TOP10", version="0.2.0")
 
 def auth(authorization: str | None = Header(default=None)):
@@ -47,8 +49,21 @@ class PublishConfigRequest(BaseModel):
     worker_url: str | None = None
     worker_token: str | None = None
 
+class ScheduleRequest(BaseModel):
+    enabled: bool | None = None
+    mode: str | None = None
+    interval_hours: int | None = None
+    daily_time: str | None = None
+    timezone: str | None = None
+    top_n: int | None = None
+
+@app.on_event("startup")
+def startup_scheduler():
+    scheduler.start()
+
 @app.on_event("shutdown")
 def shutdown_engine():
+    scheduler.stop()
     engine.stop()
 
 @app.get("/health")
@@ -57,37 +72,62 @@ def health():
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return """<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>CFST TOP10</title><style>body{font:15px system-ui;background:#0b1220;color:#e8eefb;margin:28px}main{max-width:850px;margin:auto}section{background:#152039;padding:18px;border:1px solid #2b3b5b;border-radius:12px;margin:14px 0}input,button{padding:9px;border-radius:7px}pre{white-space:pre-wrap}</style>
-<main><h1>CFST TOP10</h1><p>Docker 开发版 · IP 来源管理</p><section><input id="token" type="password" placeholder="管理 Token"><button onclick="load()">连接</button><p id="status">尚未连接</p></section>
-<section><h2>来源列表</h2><div id="sources"></div><h3>上传 TXT 来源</h3><input id="name" placeholder="来源名称"><input id="file" type="file" accept=".txt"><button onclick="upload()">上传</button></section>
-<section><h2>测速执行</h2><input id="topn" type="number" min="1" max="1000" value="10"><button onclick="runEngine()">开始测速</button> <button onclick="stopEngine()">停止测速</button> <button onclick="engineStatus()">刷新状态</button> <button onclick="downloadResult('ipv4')">下载 IPv4</button> <button onclick="downloadResult('ipv6')">下载 IPv6</button><pre id="engine">尚未执行</pre></section><section><h2>发布管理</h2><p id="publishStatus">发布配置状态未加载</p><button onclick="publishStatus()">刷新发布状态</button><p>IPv4：<button onclick="publishOne('gist','ipv4')">发布到 Gist</button> <button onclick="publishOne('cloudflare','ipv4')">发布到 CF</button> <button onclick="publishOne('all','ipv4')">双发布</button></p><p>IPv6：<button onclick="publishOne('gist','ipv6')">发布到 Gist</button> <button onclick="publishOne('cloudflare','ipv6')">发布到 CF</button> <button onclick="publishOne('all','ipv6')">双发布</button></p><pre id="publishResult"></pre><small>密钥在面板底部的「发布服务凭据配置」区域管理，不会发送到浏览器。</small></section><section><h2>合并统计</h2><button onclick="preview()">预览合并</button><pre id="result"></pre></section>
-<section><h2>发布服务凭据配置</h2><p>Token 输入框始终显示，默认以星号遮罩；点击“显示/隐藏”切换。已保存的 Token 不会回传浏览器，留空表示保持原值。</p>
-<h3>GitHub Gist</h3><p>Gist ID<br><input id="gistId" autocomplete="off" placeholder="填写 Gist ID"></p>
-<p>GitHub Token<br><input id="gistToken" type="password" autocomplete="new-password" placeholder="尚未配置或留空保持已保存值"> <button type="button" onclick="toggleSecret('gistToken',this)">显示</button></p>
-<h3>Cloudflare Worker</h3><p>Worker HTTPS 地址<br><input id="workerUrl" type="url" autocomplete="url" placeholder="https://你的 Worker 域名"></p>
-<p>Worker 上传 Token<br><input id="workerToken" type="password" autocomplete="new-password" placeholder="尚未配置或留空保持已保存值"> <button type="button" onclick="toggleSecret('workerToken',this)">显示</button></p>
-<p><button onclick="savePublishConfig()">保存发布配置</button> <button onclick="loadPublishConfig()">刷新配置状态</button></p><pre id="configStatus">尚未读取配置状态</pre></section></main>
+    return """<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CFST TOP10</title>
+<style>
+:root{color-scheme:dark;--bg:#0a1020;--panel:#131e34;--line:#263653;--muted:#9aabc5;--text:#edf3ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at top,#172746 0,var(--bg) 55%);color:var(--text);font:14px system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1600px;margin:auto;padding:14px;min-height:100vh;display:flex;flex-direction:column;gap:10px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}h1{font-size:21px;margin:0}h2{font-size:15px;margin:0 0 9px}h3{font-size:13px;margin:9px 0 5px;color:#c9d8ef}
+.sub,.muted,small{color:var(--muted)}.login{display:flex;gap:7px;align-items:center}.login input{width:210px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;flex:1;min-height:0}
+.card{background:linear-gradient(145deg,#17243d,#111b30);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0;overflow:auto}
+.card.wide{grid-column:span 2}.row{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.split{display:flex;justify-content:space-between;align-items:center;gap:8px}
+input,select,button{font:inherit;border-radius:7px;border:1px solid #344765;background:#0d1729;color:var(--text);padding:8px;min-width:0}
+input[type=number]{width:80px}input[type=time]{width:120px}button{cursor:pointer;background:#203657;border-color:#38547d}button:hover{filter:brightness(1.18)}button.primary{background:#28549a}button.danger{background:#65323d}
+input:focus,select:focus,button:focus{outline:2px solid #6ca4ff;outline-offset:1px}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1424;border:1px solid #23334f;border-radius:8px;padding:8px;margin:8px 0 0;max-height:115px;overflow:auto;font:12px ui-monospace,monospace}
+.pill{display:inline-block;border-radius:20px;padding:3px 8px;background:#263653;color:#cfe0fa;font-size:12px}.source{padding:5px 0;border-bottom:1px solid #263653}.source:last-child{border:0}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.field{min-width:0}.field input{width:100%}.secret{display:flex;gap:5px}.secret input{flex:1;width:40px}
+.stat{display:flex;gap:12px;flex-wrap:wrap}.stat b{font-size:18px}.actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+@media(max-width:760px){main{padding:10px}.grid{grid-template-columns:1fr}.card.wide{grid-column:span 1}header{align-items:flex-start;flex-direction:column}.login{width:100%}.login input{flex:1;width:60px}.fields{grid-template-columns:1fr}}
+@media(min-width:761px) and (min-height:850px){body{overflow:hidden}.grid{grid-template-rows:repeat(3,minmax(0,1fr))}.card{overflow:auto}}
+@media(max-height:849px) and (min-width:761px){main{min-height:100vh}.grid{grid-template-rows:auto auto auto}}
+</style></head><body><main>
+<header><div><h1>CFST TOP10</h1><div class="sub">Cloudflare IP 优选 · 本地 Docker 管理面板</div></div><div class="login"><input id="token" type="password" placeholder="管理 Token"><button class="primary" onclick="load()">连接面板</button><span id="status" class="muted">未连接</span></div></header>
+<div class="grid">
+<section class="card"><div class="split"><h2>IP 来源</h2><button onclick="loadSources()">刷新</button></div><div id="sources" class="muted">连接后加载来源</div><div class="row" style="margin-top:8px"><input id="name" placeholder="来源名称" style="flex:1"><input id="file" type="file" accept=".txt" style="max-width:180px"><button onclick="upload()">上传 TXT</button></div><div class="actions"><button onclick="preview()">合并预览</button></div><pre id="merge">尚无合并统计</pre></section>
+<section class="card"><div class="split"><h2>测速任务</h2><span id="taskBadge" class="pill">未连接</span></div><div class="row">TOP N <input id="topn" type="number" min="1" max="1000" value="10"><button class="primary" onclick="runEngine()">开始测速</button><button class="danger" onclick="stopEngine()">停止</button><button onclick="engineStatus()">刷新状态</button></div><div id="taskSummary" class="muted" style="margin-top:9px">等待任务状态</div><pre id="engine">尚未执行</pre></section>
+<section class="card"><h2>定时测速</h2><div class="row"><label><input id="schedEnabled" type="checkbox"> 启用</label><select id="schedMode" onchange="modeChanged()"><option value="interval">每隔 N 小时</option><option value="daily">每天指定时间</option></select></div><div class="row" style="margin-top:8px"><span id="intervalLabel">间隔小时</span><input id="intervalHours" type="number" min="1" max="720" value="12"><span id="dailyLabel" hidden>每日时间</span><input id="dailyTime" type="time" value="03:30" hidden></div><div class="row" style="margin-top:8px">时区 <input id="timezone" value="Asia/Shanghai" style="flex:1"> TOP N <input id="schedTopn" type="number" min="1" max="1000" value="10"></div><div class="actions"><button class="primary" onclick="saveSchedule()">保存定时设置</button><button onclick="loadSchedule()">刷新</button></div><pre id="scheduleInfo">尚未读取定时配置</pre></section>
+<section class="card"><h2>测速结果与发布</h2><div class="stat"><div>IPv4 <b id="v4count">—</b></div><div>IPv6 <b id="v6count">—</b></div></div><div class="actions"><button onclick="downloadResult('ipv4')">下载 IPv4 TXT</button><button onclick="downloadResult('ipv6')">下载 IPv6 TXT</button></div><h3>手动发布</h3><div class="row">IPv4 <button onclick="publishOne('gist','ipv4')">Gist</button><button onclick="publishOne('cloudflare','ipv4')">CF</button><button onclick="publishOne('all','ipv4')">双发布</button></div><div class="row" style="margin-top:6px">IPv6 <button onclick="publishOne('gist','ipv6')">Gist</button><button onclick="publishOne('cloudflare','ipv6')">CF</button><button onclick="publishOne('all','ipv6')">双发布</button></div><pre id="publishStatus">发布状态尚未加载</pre></section>
+<section class="card wide"><div class="split"><h2>发布凭据配置</h2><span class="muted">重新打开面板会读取已保存值；默认星号遮罩</span></div><div class="fields">
+<div class="field"><label>Gist ID</label><input id="gistId" autocomplete="off" placeholder="Gist ID"></div>
+<div class="field"><label>GitHub Token</label><div class="secret"><input id="gistToken" type="password" autocomplete="off" placeholder="已保存"><button type="button" onclick="toggleSecret('gistToken',this)">显示</button></div></div>
+<div class="field"><label>Cloudflare Worker HTTPS 地址</label><input id="workerUrl" type="url" placeholder="https://你的 Worker 域名"></div>
+<div class="field"><label>Worker 上传 Token</label><div class="secret"><input id="workerToken" type="password" autocomplete="off" placeholder="已保存"><button type="button" onclick="toggleSecret('workerToken',this)">显示</button></div></div>
+</div><div class="actions"><button class="primary" onclick="savePublishConfig()">保存发布配置</button><button onclick="loadPublishConfig()">重新读取配置</button><span id="configStatus" class="muted">未读取</span></div></section>
+</div></main>
 <script>
-const $=x=>document.getElementById(x), headers=()=>({Authorization:'Bearer '+$('token').value});
+const $=x=>document.getElementById(x),headers=()=>({Authorization:'Bearer '+$('token').value});
 async function req(path,opt={}){let r=await fetch(path,{...opt,headers:{...headers(),...(opt.headers||{})}});let j=await r.json();if(!r.ok)throw Error(j.detail||'请求失败');return j}
-async function load(){try{let a=await req('/api/sources');$('sources').innerHTML=a.map(x=>'<p>'+x.name+' · '+x.kind+' · '+x.entries+' 条 · '+(x.enabled?'启用':'停用')+' <button onclick="toggle(\''+x.id+'\','+(!x.enabled)+')">切换</button>'+(x.kind==='file'?' <button onclick="removeSource(\''+x.id+'\')">删除</button>':'' )+'</p>').join('');$('status').textContent='连接成功';await loadPublishConfig();await publishStatus()}catch(e){$('status').textContent=e.message}}
-async function upload(){try{let f=$('file').files[0];if(!f)throw Error('请选择 TXT');let d=new FormData();d.append('file',f);d.append('name',$('name').value||f.name);let r=await fetch('/api/sources/upload',{method:'POST',headers:headers(),body:d}),j=await r.json();if(!r.ok)throw Error(j.detail);await load()}catch(e){alert(e.message)}}
-async function toggle(id,enabled){try{await req('/api/sources/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});load()}catch(e){alert(e.message)}}
-async function removeSource(id){if(!confirm('删除这个来源？'))return;try{await req('/api/sources/'+id,{method:'DELETE'});load()}catch(e){alert(e.message)}}
-async function preview(){try{$('result').textContent=JSON.stringify(await req('/api/sources/preview'),null,2)}catch(e){$('result').textContent=e.message}}
-async function runEngine(){try{$('engine').textContent=JSON.stringify(await req('/api/engine/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({top_n:Number($('topn').value)})}),null,2)}catch(e){alert(e.message)}}
-async function stopEngine(){try{$('engine').textContent=JSON.stringify(await req('/api/engine/stop',{method:'POST'}),null,2)}catch(e){alert(e.message)}}
-async function engineStatus(){try{let s=await req('/api/engine/status'),l=await req('/api/engine/logs');$('engine').textContent=JSON.stringify(s,null,2)+'\n\n'+l.lines.join('\n')}catch(e){$('engine').textContent=e.message}}
-async function downloadResult(family){try{let r=await fetch('/api/results/'+family,{headers:headers()});if(!r.ok)throw Error((await r.json()).detail||'下载失败');let b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=family+'.txt';a.click();URL.revokeObjectURL(u)}catch(e){alert(e.message)}}
+async function load(){try{await req('/api/sources');$('status').textContent='已连接';await Promise.all([loadSources(),preview(),engineStatus(),loadSchedule(),loadPublishConfig(),publishStatus()])}catch(e){$('status').textContent=e.message}}
+async function loadSources(){try{let a=await req('/api/sources');$('sources').innerHTML=a.map(x=>'<div class="source">'+x.name+' · '+x.kind+' · '+(x.entries??'—')+' 条 · '+(x.enabled?'启用':'停用')+' <button onclick="toggle(\''+x.id+'\','+(!x.enabled)+')">切换</button>'+(x.kind==='file'?' <button onclick="removeSource(\''+x.id+'\')">删除</button>':'' )+'</div>').join('')}catch(e){$('sources').textContent=e.message}}
+async function upload(){try{let f=$('file').files[0];if(!f)throw Error('请选择 TXT');let d=new FormData();d.append('file',f);d.append('name',$('name').value||f.name);let r=await fetch('/api/sources/upload',{method:'POST',headers:headers(),body:d}),j=await r.json();if(!r.ok)throw Error(j.detail);await loadSources()}catch(e){alert(e.message)}}
+async function toggle(id,enabled){try{await req('/api/sources/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});loadSources()}catch(e){alert(e.message)}}
+async function removeSource(id){if(!confirm('删除这个来源？'))return;try{await req('/api/sources/'+id,{method:'DELETE'});loadSources()}catch(e){alert(e.message)}}
+async function preview(){try{$('merge').textContent=JSON.stringify(await req('/api/sources/preview'),null,2)}catch(e){$('merge').textContent=e.message}}
+async function runEngine(){try{let s=await req('/api/engine/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({top_n:Number($('topn').value)})});$('engine').textContent=JSON.stringify(s,null,2);engineStatus()}catch(e){alert(e.message)}}
+async function stopEngine(){try{await req('/api/engine/stop',{method:'POST'});engineStatus()}catch(e){alert(e.message)}}
+async function engineStatus(){try{let s=await req('/api/engine/status'),l=await req('/api/engine/logs');$('taskBadge').textContent=s.status;$('taskSummary').textContent='阶段：'+(s.phase||'—')+' · 协议：'+(s.current_family||'—')+' · 候选：'+(s.candidate_count??0)+' · 已完成协议：'+(s.completed_families||[]).join(',')+' · 耗时：'+(s.elapsed_seconds??0)+' 秒';$('engine').textContent=JSON.stringify(s,null,2)+'\n'+l.lines.join('\n');$('v4count').textContent=s.results?.ipv4?.count??'—';$('v6count').textContent=s.results?.ipv6?.count??'—'}catch(e){$('engine').textContent=e.message}}
+async function downloadResult(f){try{let r=await fetch('/api/results/'+f,{headers:headers()});if(!r.ok)throw Error((await r.json()).detail||'下载失败');let b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=f+'.txt';a.click();URL.revokeObjectURL(u)}catch(e){alert(e.message)}}
+function modeChanged(){let d=$('schedMode').value==='daily';$('intervalHours').hidden=d;$('intervalLabel').hidden=d;$('dailyTime').hidden=!d;$('dailyLabel').hidden=!d}
+async function loadSchedule(){try{let s=await req('/api/schedule');$('schedEnabled').checked=s.enabled;$('schedMode').value=s.mode;$('intervalHours').value=s.interval_hours;$('dailyTime').value=s.daily_time;$('timezone').value=s.timezone;$('schedTopn').value=s.top_n;modeChanged();$('scheduleInfo').textContent='下次执行：'+(s.next_run_at||'未启用')+'\n上次执行：'+(s.last_run_at||'暂无')+'\n上次结果：'+JSON.stringify(s.last_result||'暂无')+'\n调度器：'+(s.scheduler_running?'运行中':'未运行')}catch(e){$('scheduleInfo').textContent=e.message}}
+async function saveSchedule(){try{let b={enabled:$('schedEnabled').checked,mode:$('schedMode').value,interval_hours:Number($('intervalHours').value),daily_time:$('dailyTime').value,timezone:$('timezone').value,top_n:Number($('schedTopn').value)};await req('/api/schedule',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});await loadSchedule()}catch(e){alert(e.message)}}
 async function publishStatus(){try{let s=await req('/api/publish/status');$('publishStatus').textContent=JSON.stringify(s.targets,null,2)}catch(e){$('publishStatus').textContent=e.message}}
-
-function toggleSecret(id,button){let el=$(id),show=el.type==='password';el.type=show?'text':'password';button.textContent=show?'隐藏':'显示'}
-async function loadPublishConfig(){try{let s=await req('/api/publish/status'),g=s.targets.gist,c=s.targets.cloudflare;$('gistId').value=s.gist_id||'';$('workerUrl').value=s.worker_url||'';$('gistToken').value='';$('workerToken').value='';$('gistToken').placeholder=g.configured?'已保存（留空保持不变）':'尚未配置，请输入 Token';$('workerToken').placeholder=c.configured?'已保存（留空保持不变）':'尚未配置，请输入 Token';$('configStatus').textContent='Gist：'+(g.configured?'已配置':'未配置')+'\\nCloudflare：'+(c.configured?'已配置':'未配置')}catch(e){$('configStatus').textContent=e.message}}
-async function savePublishConfig(){try{let r=await req('/api/publish/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({gist_id:$('gistId').value,github_token:$('gistToken').value,worker_url:$('workerUrl').value,worker_token:$('workerToken').value})});$('gistToken').value='';$('workerToken').value='';await loadPublishConfig();await publishStatus();$('configStatus').textContent='配置已保存。\\n'+JSON.stringify(r,null,2)}catch(e){$('configStatus').textContent=e.message}}
-
-async function publishOne(target,family){try{let path=target==='all'?'/api/publish/all/'+family:'/api/publish/one/'+target+'/'+family;let r=await req(path,{method:'POST'});$('publishResult').textContent=JSON.stringify(r,null,2);await publishStatus()}catch(e){$('publishResult').textContent=e.message;await publishStatus()}}
-</script></html>"""
+function toggleSecret(id,b){let e=$(id),show=e.type==='password';e.type=show?'text':'password';b.textContent=show?'隐藏':'显示'}
+async function loadPublishConfig(){try{let s=await req('/api/publish/config');$('gistId').value=s.gist_id||'';$('gistToken').value=s.github_token||'';$('workerUrl').value=s.worker_url||'';$('workerToken').value=s.worker_token||'';$('gistToken').type='password';$('workerToken').type='password';$('configStatus').textContent='已读取本地保存配置'}catch(e){$('configStatus').textContent=e.message}}
+async function savePublishConfig(){try{await req('/api/publish/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({gist_id:$('gistId').value,github_token:$('gistToken').value,worker_url:$('workerUrl').value,worker_token:$('workerToken').value})});$('configStatus').textContent='配置已保存';await loadPublishConfig();await publishStatus()}catch(e){$('configStatus').textContent=e.message}}
+async function publishOne(t,f){try{let p=t==='all'?'/api/publish/all/'+f:'/api/publish/one/'+t+'/'+f;let r=await req(p,{method:'POST'});$('publishStatus').textContent=JSON.stringify(r,null,2);await publishStatus()}catch(e){$('publishStatus').textContent=e.message;await publishStatus()}}
+</script></body></html>"""
 
 @app.get("/api/sources", dependencies=[Depends(auth)])
 def list_sources():
@@ -156,6 +196,17 @@ def engine_status():
 def engine_logs():
     return {"lines": engine.logs()}
 
+@app.get("/api/schedule", dependencies=[Depends(auth)])
+def get_schedule():
+    return scheduler.status()
+
+@app.put("/api/schedule", dependencies=[Depends(auth)])
+def update_schedule(body: ScheduleRequest):
+    try:
+        return scheduler.update(body.model_dump(exclude_unset=True))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
 @app.post("/api/engine/run", dependencies=[Depends(auth)])
 def run_engine(body: RunRequest):
     try:
@@ -205,6 +256,10 @@ def preview_sources():
 @app.get("/api/publish/status", dependencies=[Depends(auth)])
 def publish_status():
     return publisher.status()
+
+@app.get("/api/publish/config", dependencies=[Depends(auth)])
+def get_publish_config():
+    return publisher.config_for_ui()
 
 
 @app.put("/api/publish/config", dependencies=[Depends(auth)])
