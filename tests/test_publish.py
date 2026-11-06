@@ -63,3 +63,28 @@ def test_publish_all_runs_destinations_independently(tmp_path: Path, monkeypatch
     result = publisher.publish_all("ipv4")
     assert result["gist"]["status"] == "success"
     assert result["cloudflare"]["status"] == "failed"
+
+def test_result_validation_rejects_wrong_address_family(tmp_path: Path):
+    publisher = make_publisher(tmp_path)
+    (tmp_path / "ipv4.txt").write_text("2001:db8::1\\n", encoding="ascii")
+    with pytest.raises(PublishError, match="错误协议版本"):
+        publisher._read_result("ipv4")
+
+
+def test_cloudflare_publish_uses_put_and_returns_public_url(tmp_path: Path, monkeypatch):
+    publisher = make_publisher(tmp_path)
+    monkeypatch.setenv("CFST_CF_WORKER_URL", "https://worker.example")
+    monkeypatch.setenv("CFST_CF_WORKER_TOKEN", "cf-token")
+    calls = []
+
+    def fake_request(url, method, headers, body=None):
+        calls.append((url, method, headers, body))
+        return 200, b"OK"
+
+    monkeypatch.setattr(publisher, "_request", fake_request)
+    result = publisher.publish("cloudflare", "ipv6")
+    assert result["status"] == "success"
+    assert calls[0][0] == "https://worker.example/ipv6.txt"
+    assert calls[0][1] == "PUT"
+    assert calls[0][2]["Authorization"] == "Bearer cf-token"
+    assert result["url"] == "https://worker.example/ipv6.txt"
