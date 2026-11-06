@@ -19,7 +19,7 @@ sources_dir.mkdir(parents=True, exist_ok=True)
 db = Database(settings.data_dir)
 builtin_file = settings.engine_dir / "ip.txt"
 
-with db.connect() as conn:
+with db.session() as conn:
     conn.execute(
         "INSERT OR IGNORE INTO sources(id,name,kind,path,enabled) VALUES('builtin','项目自带 IP 库','builtin',?,1)",
         (str(builtin_file),),
@@ -48,7 +48,7 @@ def index():
 <script>
 const $=x=>document.getElementById(x), headers=()=>({Authorization:'Bearer '+$('token').value});
 async function req(path,opt={}){let r=await fetch(path,{...opt,headers:{...headers(),...(opt.headers||{})}});let j=await r.json();if(!r.ok)throw Error(j.detail||'请求失败');return j}
-async function load(){try{let a=await req('/api/sources');$('sources').innerHTML=a.map(x=>'<p>'+x.name+' · '+x.kind+' · '+x.entries+' 条 · '+(x.enabled?'启用':'停用')+(x.kind==='file'?' <button onclick="toggle(\''+x.id+'\','+(!x.enabled)+')">切换</button> <button onclick="removeSource(\''+x.id+'\')">删除</button>':'' )+'</p>').join('');$('status').textContent='连接成功'}catch(e){$('status').textContent=e.message}}
+async function load(){try{let a=await req('/api/sources');$('sources').innerHTML=a.map(x=>'<p>'+x.name+' · '+x.kind+' · '+x.entries+' 条 · '+(x.enabled?'启用':'停用')+' <button onclick="toggle(\''+x.id+'\','+(!x.enabled)+')">切换</button>'+(x.kind==='file'?' <button onclick="removeSource(\''+x.id+'\')">删除</button>':'' )+'</p>').join('');$('status').textContent='连接成功'}catch(e){$('status').textContent=e.message}}
 async function upload(){try{let f=$('file').files[0];if(!f)throw Error('请选择 TXT');let d=new FormData();d.append('file',f);d.append('name',$('name').value||f.name);let r=await fetch('/api/sources/upload',{method:'POST',headers:headers(),body:d}),j=await r.json();if(!r.ok)throw Error(j.detail);await load()}catch(e){alert(e.message)}}
 async function toggle(id,enabled){try{await req('/api/sources/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});load()}catch(e){alert(e.message)}}
 async function removeSource(id){if(!confirm('删除这个来源？'))return;try{await req('/api/sources/'+id,{method:'DELETE'});load()}catch(e){alert(e.message)}}
