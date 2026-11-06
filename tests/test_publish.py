@@ -88,3 +88,27 @@ def test_cloudflare_publish_uses_put_and_returns_public_url(tmp_path: Path, monk
     assert calls[0][1] == "PUT"
     assert calls[0][2]["Authorization"] == "Bearer cf-token"
     assert result["url"] == "https://worker.example/ipv6.txt"
+
+
+
+def test_publish_config_is_saved_private_and_never_returned(tmp_path: Path):
+    publisher = make_publisher(tmp_path)
+    result = publisher.save_config({
+        "gist_id": "c" * 32,
+        "github_token": "very-secret-github-token",
+        "worker_url": "https://worker.example",
+        "worker_token": "very-secret-worker-token",
+    })
+    assert result["targets"]["gist"]["configured"] is True
+    assert result["targets"]["cloudflare"]["configured"] is True
+    assert "very-secret-github-token" not in str(result)
+    assert "very-secret-worker-token" not in str(result)
+    assert publisher.config_file.stat().st_mode & 0o777 == 0o600
+    assert publisher._config()["github_token"] == "very-secret-github-token"
+    assert publisher._config()["worker_token"] == "very-secret-worker-token"
+
+
+def test_publish_config_rejects_non_https_worker_url(tmp_path: Path):
+    publisher = make_publisher(tmp_path)
+    with pytest.raises(PublishError, match="HTTPS"):
+        publisher.save_config({"worker_url": "http://worker.example"})
