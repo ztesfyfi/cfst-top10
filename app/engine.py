@@ -87,7 +87,16 @@ class EngineManager:
 
     def status(self) -> dict:
         with self._lock:
-            return dict(self._state)
+            state = dict(self._state)
+            started = state.get("started_at")
+            if started and state.get("status") in {"running", "stopping"}:
+                try:
+                    state["elapsed_seconds"] = max(0, int((datetime.now(timezone.utc) - datetime.fromisoformat(started)).total_seconds()))
+                except ValueError:
+                    state["elapsed_seconds"] = None
+            else:
+                state["elapsed_seconds"] = None
+            return state
 
     def logs(self, limit: int = 250) -> list[str]:
         try:
@@ -95,7 +104,7 @@ class EngineManager:
         except OSError:
             return []
 
-    def start(self, top_n: int = 10) -> dict:
+    def start(self, top_n: int = 10, trigger: str = "manual") -> dict:
         if not 1 <= top_n <= 1000:
             raise ValueError("TOP N 范围必须为 1～1000")
         with self._lock:
@@ -104,7 +113,10 @@ class EngineManager:
             self._stop_requested = False
             self._state = {"status": "running", "message": "测速任务已启动",
                            "started_at": utc_now(), "finished_at": None,
-                           "top_n": top_n, "results": {}}
+                           "top_n": top_n, "results": {}, "trigger": trigger,
+                           "phase": "preparing_sources", "current_family": None,
+                           "candidate_count": 0, "completed_families": [],
+                           "total_families": 0}
             self._save_state()
             self._thread = threading.Thread(target=self._run, args=(top_n,), daemon=True)
             self._thread.start()
@@ -148,8 +160,11 @@ class EngineManager:
                 "ipv6": [value for value in merged.entries
                          if ipaddress.ip_network(value, strict=False).version == 6],
             }
+            with self._lock:
+                self._state.update({"phase": "sources_ready", "candidate_count": len(merged.entries)})
+                self._save_state()
             self._log(
-                f"来源合并完成：合并前去重统计后 {len(merged.entries)} 条，"
+                f"来源合并完成：合并前去重统计后 {len(merged.entries)} 条，
                 f"无效 {merged.invalid} 条，重复 {merged.duplicates} 条"
             )
             if not merged.entries:
@@ -158,6 +173,10 @@ class EngineManager:
             if not binary.is_file() or not os.access(binary, os.X_OK):
                 raise RuntimeError("CFST 可执行文件不存在或不可执行")
 
+            active_families = [name for name, values in families.items() if values]
+            with self._lock:
+                self._state.update({"phase": "testing", "total_families": len(active_families)})
+                self._save_state()
             with tempfile.TemporaryDirectory(prefix="cfst-", dir="/tmp") as temp_dir:
                 work = Path(temp_dir)
                 for family, addresses in families.items():
@@ -166,7 +185,15 @@ class EngineManager:
                             raise InterruptedError("用户已停止任务")
                     if not addresses:
                         results[family] = {"status": "skipped", "count": 0}
+                        with self._lock:
+                            self._state["completed_families"] = list(self._state.get("completed_families", [])) + [family]
+                            self._save_state()
                         continue
+                    with self._lock:
+                        self._state.update({"phase": "testing_" + family,
+                                            "current_family": family,
+                                            "candidate_count": len(addresses)})
+                        self._save_state()
                     input_file = work / f"{family}.txt"
                     csv_file = work / f"{family}.csv"
                     input_file.write_text("\n".join(addresses) + "\n", encoding="ascii")
@@ -213,6 +240,10 @@ class EngineManager:
                     results[family] = {"status": "success", "count": len(selected),
                                        "file": target.name}
                     self._log(f"{family} 结果已原子保存：{len(selected)} 个 IP")
+                    with self._lock:
+                        self._state["completed_families"] = list(self._state.get("completed_families", [])) + [family]
+                        self._state["phase"] = "publishing" if os.getenv("CFST_AUTO_PUBLISH", "false").strip().lower() in {"1", "true", "yes", "on"} else "saving_results"
+                        self._save_state()
                     if os.getenv("CFST_AUTO_PUBLISH", "false").strip().lower() in {"1", "true", "yes", "on"}:
                         publish_status = self.publisher.publish_all(family)
                         results[family]["publish"] = publish_status
@@ -220,21 +251,22 @@ class EngineManager:
                             self._log(f"{family} 自动发布 {target}: {outcome.get('status')}")
 
             with self._lock:
-                self._state.update({"status": "completed", "message": "测速完成",
+                self._state.update({"status": "completed", "phase": "completed", "current_family": None,
+                                    "message": "测速完成",
                                     "finished_at": utc_now(), "results": results,
                                     "input_count": len(merged.entries),
                                     "invalid": merged.invalid, "duplicates": merged.duplicates})
                 self._save_state()
         except InterruptedError as exc:
             with self._lock:
-                self._state.update({"status": "stopped", "message": str(exc),
+                self._state.update({"status": "stopped", "phase": "stopped", "current_family": None, "message": str(exc),
                                     "finished_at": utc_now(), "results": results})
                 self._save_state()
             self._log("测速任务已停止")
         except Exception as exc:
             self._log(f"任务失败：{exc}")
             with self._lock:
-                self._state.update({"status": "failed", "message": str(exc),
+                self._state.update({"status": "failed", "phase": "failed", "current_family": None, "message": str(exc),
                                     "finished_at": utc_now(), "results": results})
                 self._save_state()
         finally:
