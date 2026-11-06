@@ -87,6 +87,7 @@ async function loadPublishConfig(){try{let s=await req('/api/publish/status'),g=
 async function savePublishConfig(){try{let r=await req('/api/publish/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({gist_id:$('gistId').value,github_token:$('gistToken').value,worker_url:$('workerUrl').value,worker_token:$('workerToken').value})});$('gistToken').value='';$('workerToken').value='';await loadPublishConfig();await publishStatus();$('configStatus').textContent='配置已保存。\\n'+JSON.stringify(r,null,2)}catch(e){$('configStatus').textContent=e.message}}
 
 async function publishOne(target,family){try{let path=target==='all'?'/api/publish/all/'+family:'/api/publish/one/'+target+'/'+family;let r=await req(path,{method:'POST'});$('publishResult').textContent=JSON.stringify(r,null,2);await publishStatus()}catch(e){$('publishResult').textContent=e.message;await publishStatus()}}
+loadPublishConfig();
 </script></html>"""
 
 @app.get("/api/sources", dependencies=[Depends(auth)])
