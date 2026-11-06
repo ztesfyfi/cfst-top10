@@ -134,6 +134,12 @@ class EngineManager:
         if process and process.poll() is None:
             try:
                 os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             except ProcessLookupError:
                 pass
         return self.status()
