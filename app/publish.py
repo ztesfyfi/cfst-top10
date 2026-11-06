@@ -81,6 +81,11 @@ class Publisher:
         os.replace(temp, self.config_file)
         return self.status()
 
+    def config_for_ui(self) -> dict[str, str]:
+        # Local-only deployment mode: return persisted values so the password fields
+        # can be prefilled and masked by the browser on each authenticated panel load.
+        return self._config()
+
     def status(self) -> dict[str, Any]:
         state = self._state()
         values = self._config()
