@@ -28,7 +28,7 @@ async function authorized(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const filename = url.pathname.replace(/^\\/+|\\/+$/g, "");
+    const filename = url.pathname.replace(/^\/+|\/+$/g, "");
 
     if (!FILES.has(filename) || url.pathname !== "/" + filename) {
       return response("Not found", 404);
@@ -48,11 +48,11 @@ export default {
       if (!body || new TextEncoder().encode(body).byteLength > MAX_BYTES) {
         return response("Empty or oversized result", 413);
       }
-      if (!body.endsWith("\\n") || body.includes("\\r")) {
+      if (!body.endsWith("\n") || body.includes("\r")) {
         return response("Invalid TXT format", 400);
       }
-      const lines = body.trimEnd().split("\\n");
-      if (!lines.length || lines.some((line) => !line || /\\s/.test(line))) {
+      const lines = body.trimEnd().split("\n");
+      if (!lines.length || lines.some((line) => !line || /\s/.test(line))) {
         return response("Invalid TXT lines", 400);
       }
       await env.CFST_RESULTS.put(filename, body, {
