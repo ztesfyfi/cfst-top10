@@ -91,14 +91,14 @@ docker compose down
 
 ### 3. 在 CFST TOP10 中配置
 
-Docker 主应用从 `.env` 读取凭据（密钥不会发送到浏览器）：
+在管理面板最底部的「发布服务凭据配置」区域填写 Gist ID、GitHub Token、Worker HTTPS 地址和 Worker 上传 Token。Token 输入框始终显示，默认以星号遮罩，可通过旁边按钮切换显示/隐藏。保存后面板只显示配置状态，不会回显已保存的 Token。留空 Token 表示保留原值。凭据保存在 Docker 持久化数据卷的受限权限配置文件中（权限 0600），不会发送到浏览器。也兼容旧版 `.env` 环境变量作为初始配置来源。
 
 | 环境变量 | 内容 |
 |---|---|
 | `CFST_GIST_ID` | Gist ID |
 | `CFST_GITHUB_TOKEN` | 具有 Gist 写入权限的专用 Token |
 
-配置后重新创建容器即可。面板「发布管理」可单独发布 IPv4/IPv6 到 Gist、CF，或双发布；设置 `CFST_AUTO_PUBLISH=true` 后，每个协议测速成功会自动发布。发布失败时保留 Gist 上一次成功的文件，不影响本地测速结果。
+保存面板配置后即可在「发布管理」区域手动发布 IPv4/IPv6 到 Gist、CF，或双发布；设置 `CFST_AUTO_PUBLISH=true` 后，每个协议测速成功会自动发布。发布失败时保留 Gist 上一次成功的文件，不影响本地测速结果。
 
 ### 4. 获取发布结果
 
@@ -139,14 +139,14 @@ Cloudflare 发布端采用独立 Worker 项目，不把 Worker 源码或部署�
 
 ### 3. 在 CFST TOP10 中配置
 
-主应用从 `.env` 读取 Worker 地址和上传密钥：
+在面板最底部的「发布服务凭据配置」区域填写 Worker 地址和上传密钥：
 
 | 环境变量 | 内容 |
 |---|---|
 | `CFST_CF_WORKER_URL` | Worker HTTPS 根地址，不带文件路径 |
 | `CFST_CF_WORKER_TOKEN` | 与 Worker Secret 完全一致的密钥 |
 
-保存后可分别发布 IPv4、IPv6，也可设置测速成功后自动发布。Worker/KV 发布失败时，不覆盖远端旧结果，也不影响 Gist 路线和本地结果。
+保存面板配置后可分别发布 IPv4、IPv6，也可设置测速成功后自动发布。Worker/KV 发布失败时，不覆盖远端旧结果，也不影响 Gist 路线和本地结果。
 
 ### 4. 获取发布结果
 
@@ -210,7 +210,7 @@ IPv4 使用 `ipv4.txt`，IPv6 使用 `ipv6.txt`。不会生成 YAML、Base64 或
 
 ## 发布配置与操作
 
-在 `.env` 中按需填写 Gist、Cloudflare 配置。两种后端均留空时对应路线关闭。配置示例见 [`.env.example`](.env.example)。
+在面板最底部填写 Gist、Cloudflare 配置。两种后端可以独立配置。旧版 `.env` 环境变量仍作为兼容配置入口，示例见 [`.env.example`](.env.example)。
 
 ```dotenv
 CFST_GIST_ID=你的Gist_ID
