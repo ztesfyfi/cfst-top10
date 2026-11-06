@@ -117,6 +117,14 @@ class Scheduler:
         with self.lock:
             if self.thread and self.thread.is_alive():
                 return
+            if self.last_result and self.last_result.get("status") == "started":
+                task = self.engine.status()
+                if task.get("status") == "interrupted":
+                    self.last_result = {"status": "interrupted",
+                                        "message": task.get("message", "容器重启导致任务中断"),
+                                        "started_at": task.get("started_at"),
+                                        "finished_at": task.get("finished_at")}
+                    self._save()
             self.stop_event.clear()
             self.thread = threading.Thread(target=self._loop, name="cfst-scheduler", daemon=True)
             self.thread.start()
