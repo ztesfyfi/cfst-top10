@@ -12,6 +12,11 @@ services:
       CFST_ENGINE_DIR: /opt/cfst
       CFST_ADMIN_TOKEN: ${CFST_ADMIN_TOKEN:?Set CFST_ADMIN_TOKEN in .env}
       TZ: ${TZ:-Asia/Shanghai}
+      CFST_GIST_ID: ${CFST_GIST_ID:-}
+      CFST_GITHUB_TOKEN: ${CFST_GITHUB_TOKEN:-}
+      CFST_CF_WORKER_URL: ${CFST_CF_WORKER_URL:-}
+      CFST_CF_WORKER_TOKEN: ${CFST_CF_WORKER_TOKEN:-}
+      CFST_AUTO_PUBLISH: ${CFST_AUTO_PUBLISH:-false}
     volumes:
       - cfst_data:/data
     read_only: true
