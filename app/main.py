@@ -5,11 +5,12 @@ import uuid
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 from .config import Settings
 from .db import Database
+from .engine import EngineManager
 from .sources import merge_ip_sources, parse_ip_list, read_text_file
 
 settings = Settings.from_env()
@@ -25,7 +26,8 @@ with db.session() as conn:
         (str(builtin_file),),
     )
 
-app = FastAPI(title="CFST TOP10", version="0.1.0")
+engine = EngineManager(settings.data_dir, settings.engine_dir, db)
+app = FastAPI(title="CFST TOP10", version="0.2.0")
 
 def auth(authorization: str | None = Header(default=None)):
     if not authorization or not hmac.compare_digest(authorization, "Bearer " + settings.admin_token):
@@ -33,6 +35,9 @@ def auth(authorization: str | None = Header(default=None)):
 
 class Toggle(BaseModel):
     enabled: bool
+
+class RunRequest(BaseModel):
+    top_n: int = 10
 
 @app.get("/health")
 def health():
@@ -114,6 +119,35 @@ def delete_source(source_id: str):
         Path(row["path"]).unlink(missing_ok=True)
     return {"ok":True}
 
+@app.get("/api/engine/status", dependencies=[Depends(auth)])
+def engine_status():
+    return engine.status()
+
+@app.get("/api/engine/logs", dependencies=[Depends(auth)])
+def engine_logs():
+    return {"lines": engine.logs()}
+
+@app.post("/api/engine/run", dependencies=[Depends(auth)])
+def run_engine(body: RunRequest):
+    try:
+        return engine.start(body.top_n)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+
+@app.post("/api/engine/stop", dependencies=[Depends(auth)])
+def stop_engine():
+    return engine.stop()
+
+@app.get("/api/results/{family}", dependencies=[Depends(auth)])
+def download_result(family: str):
+    if family not in {"ipv4", "ipv6"}:
+        raise HTTPException(404, "未知结果类型")
+    target = settings.data_dir / f"{family}.txt"
+    if not target.is_file():
+        raise HTTPException(404, "暂无测速结果")
+    return FileResponse(target, media_type="text/plain; charset=utf-8", filename=f"{family}.txt")
 @app.get("/api/sources/preview", dependencies=[Depends(auth)])
 def preview_sources():
     rows = [x for x in db.list_sources() if x["enabled"]]
