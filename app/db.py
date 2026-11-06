@@ -41,7 +41,7 @@ class Database:
     def set_enabled(self, source_id, enabled):
         with self.connect() as conn:
             cur = conn.execute(
-                "UPDATE sources SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND kind='file'",
+                "UPDATE sources SET enabled=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
                 (int(enabled), source_id),
             )
             return cur.rowcount == 1
