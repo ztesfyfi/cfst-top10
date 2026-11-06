@@ -82,7 +82,10 @@ class Publisher:
         import ipaddress
         try:
             for line in lines:
-                ipaddress.ip_address(line)
+                parsed = ipaddress.ip_address(line)
+                expected_version = 4 if family == "ipv4" else 6
+                if parsed.version != expected_version:
+                    raise PublishError(f"{family} 文件包含错误协议版本的地址")
         except ValueError as exc:
             raise PublishError("结果文件包含无效 IP") from exc
         return "\n".join(lines) + "\n"
