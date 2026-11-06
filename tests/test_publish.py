@@ -1,0 +1,65 @@
+from pathlib import Path
+
+import pytest
+
+from app.publish import PublishError, Publisher
+
+
+def make_publisher(tmp_path: Path) -> Publisher:
+    (tmp_path / "ipv4.txt").write_text("192.0.2.1\n192.0.2.2\n", encoding="ascii")
+    (tmp_path / "ipv6.txt").write_text("2001:db8::1\n", encoding="ascii")
+    return Publisher(tmp_path)
+
+
+def test_result_validation_rejects_invalid_ip(tmp_path: Path):
+    publisher = make_publisher(tmp_path)
+    (tmp_path / "ipv4.txt").write_text("not-an-ip\n", encoding="ascii")
+    with pytest.raises(PublishError, match="无效 IP"):
+        publisher._read_result("ipv4")
+
+
+def test_gist_publish_uses_expected_endpoint_and_payload(tmp_path: Path, monkeypatch):
+    publisher = make_publisher(tmp_path)
+    monkeypatch.setenv("CFST_GIST_ID", "a" * 32)
+    monkeypatch.setenv("CFST_GITHUB_TOKEN", "test-token")
+    calls = []
+
+    def fake_request(url, method, headers, body=None):
+        calls.append((url, method, headers, body))
+        return 200, b"{}"
+
+    monkeypatch.setattr(publisher, "_request", fake_request)
+    result = publisher.publish("gist", "ipv4")
+    assert result["status"] == "success"
+    assert calls[0][0] == "https://api.github.com/gists/" + "a" * 32
+    assert calls[0][1] == "PATCH"
+    assert b"ipv4.txt" in calls[0][3]
+    assert b"192.0.2.1" in calls[0][3]
+
+
+def test_cloudflare_publish_requires_https_and_token(tmp_path: Path, monkeypatch):
+    publisher = make_publisher(tmp_path)
+    monkeypatch.setenv("CFST_CF_WORKER_URL", "http://worker.example")
+    monkeypatch.setenv("CFST_CF_WORKER_TOKEN", "secret")
+    with pytest.raises(PublishError, match="HTTPS"):
+        publisher.publish("cloudflare", "ipv4")
+
+
+def test_publish_all_runs_destinations_independently(tmp_path: Path, monkeypatch):
+    publisher = make_publisher(tmp_path)
+    monkeypatch.setenv("CFST_GIST_ID", "b" * 32)
+    monkeypatch.setenv("CFST_GITHUB_TOKEN", "gist-token")
+    monkeypatch.setenv("CFST_CF_WORKER_URL", "https://worker.example")
+    monkeypatch.setenv("CFST_CF_WORKER_TOKEN", "cf-token")
+
+    def fake_gist(family, content):
+        return {"status": "success"}
+
+    def fail_cf(family, content):
+        raise PublishError("simulated CF failure")
+
+    monkeypatch.setattr(publisher, "publish_gist", fake_gist)
+    monkeypatch.setattr(publisher, "publish_cloudflare", fail_cf)
+    result = publisher.publish_all("ipv4")
+    assert result["gist"]["status"] == "success"
+    assert result["cloudflare"]["status"] == "failed"
