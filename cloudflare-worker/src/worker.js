@@ -1,6 +1,21 @@
 const FILES = new Set(["ipv4.txt", "ipv6.txt"]);
 const MAX_BYTES = 2 * 1024 * 1024;
 
+function validAddress(value, filename) {
+  if (filename === "ipv4.txt") {
+    const parts = value.split(".");
+    return parts.length === 4 && parts.every((part) =>
+      /^(0|[1-9][0-9]{0,2})$/.test(part) && Number(part) <= 255
+    );
+  }
+  try {
+    const parsed = new URL("http://[" + value + "]/");
+    return parsed.hostname.startsWith("[") && parsed.hostname.endsWith("]");
+  } catch {
+    return false;
+  }
+}
+
 function response(body, status = 200, extra = {}) {
   return new Response(body, {
     status,
@@ -52,8 +67,10 @@ export default {
         return response("Invalid TXT format", 400);
       }
       const lines = body.trimEnd().split("\n");
-      if (!lines.length || lines.some((line) => !line || /\s/.test(line))) {
-        return response("Invalid TXT lines", 400);
+      if (!lines.length || lines.some((line) =>
+        !line || /\s/.test(line) || !validAddress(line, filename)
+      )) {
+        return response("Invalid IP list", 400);
       }
       await env.CFST_RESULTS.put(filename, body, {
         metadata: { updated_at: new Date().toISOString(), count: lines.length },
