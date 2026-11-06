@@ -47,6 +47,8 @@ docker compose down
 - CFST 执行器：手动启动/停止、互斥运行、日志与状态查询；IPv4/IPv6 分开测速。
 - 结果处理：解析官方 CSV，筛选零丢包结果，按下载速度排序，使用原子替换保存 `ipv4.txt` / `ipv6.txt`；失败或空结果不覆盖旧文件。
 - API 提供受 Token 保护的结果下载接口。
+- 发布模块：支持 Gist 与 Cloudflare Worker/KV 独立发布、双发布、状态记录及测速成功后自动发布。
+- Cloudflare Worker 源码位于 `cloudflare-worker/`，使用 KV Binding `CFST_RESULTS` 和 Secret `CFST_UPLOAD_TOKEN`。
 - 测试：IP/CIDR 规范化、无效行处理、跨来源去重、输入大小限制和 CFST CSV 解析。
 
 ## 已确认的产品方向
@@ -89,18 +91,14 @@ docker compose down
 
 ### 3. 在 CFST TOP10 中配置
 
-Docker 版本完成发布功能后，在面板的「发布管理」中填写：
+Docker 主应用从 `.env` 读取凭据（密钥不会发送到浏览器）：
 
-| 配置项 | 内容 |
+| 环境变量 | 内容 |
 |---|---|
-| 发布方式 | GitHub Gist |
-| Gist ID | 上一步复制的 ID |
-| GitHub Token | 专用 Token |
-| IPv4 文件名 | `ipv4.txt` |
-| IPv6 文件名 | `ipv6.txt` |
-| 启用状态 | 按需开启 |
+| `CFST_GIST_ID` | Gist ID |
+| `CFST_GITHUB_TOKEN` | 具有 Gist 写入权限的专用 Token |
 
-保存后可单独发布 IPv4、IPv6，也可在测速完成后自动发布。发布失败时保留 Gist 上一次成功的文件，不影响本地测速结果。
+配置后重新创建容器即可。面板「发布管理」可单独发布 IPv4/IPv6 到 Gist、CF，或双发布；设置 `CFST_AUTO_PUBLISH=true` 后，每个协议测速成功会自动发布。发布失败时保留 Gist 上一次成功的文件，不影响本地测速结果。
 
 ### 4. 获取发布结果
 
@@ -129,7 +127,7 @@ https://gist.githubusercontent.com/<用户名>/<Gist_ID>/raw/ipv6.txt
 
 Cloudflare 发布端采用独立 Worker 项目，不把 Worker 源码或部署流程混入 CFST TOP10 主容器。
 
-Worker 项目交付后，按其 README 部署到 Cloudflare Workers，并完成以下配置：
+按 [`cloudflare-worker/README.md`](cloudflare-worker/README.md) 部署 Worker，并完成以下配置：
 
 - 将 KV Namespace 绑定到 Worker。
 - 设置专用上传密钥（Secret），用于验证 CFST TOP10 服务端的发布请求。
@@ -137,26 +135,22 @@ Worker 项目交付后，按其 README 部署到 Cloudflare Workers，并完成�
 - 启用 HTTPS；上传接口必须验证密钥，不能开放匿名写入。
 - 公共读取接口只返回 TXT 内容，不暴露 KV 管理能力或上传密钥。
 
-> Worker 项目、变量名称、绑定名称、上传 API 路径和实际部署命令，将以独立 Worker 仓库正式发布的 README 为准。当前尚未创建或部署该 Worker，因此这里不提供虚构的命令或接口地址。
+> Worker 源码和部署说明已放在 `cloudflare-worker/`，这是独立部署单元；部署前需在 `wrangler.toml` 填入 KV Namespace ID。当前尚未替你部署 Worker。
 
 ### 3. 在 CFST TOP10 中配置
 
-发布功能交付后，在面板的「发布管理」中填写：
+主应用从 `.env` 读取 Worker 地址和上传密钥：
 
-| 配置项 | 内容 |
+| 环境变量 | 内容 |
 |---|---|
-| 发布方式 | Cloudflare Workers KV |
-| Worker 地址 | 已部署 Worker 的 HTTPS 地址 |
-| 上传密钥 | Worker 配置的专用 Secret |
-| IPv4 对象名 | `ipv4.txt` |
-| IPv6 对象名 | `ipv6.txt` |
-| 启用状态 | 按需开启 |
+| `CFST_CF_WORKER_URL` | Worker HTTPS 根地址，不带文件路径 |
+| `CFST_CF_WORKER_TOKEN` | 与 Worker Secret 完全一致的密钥 |
 
 保存后可分别发布 IPv4、IPv6，也可设置测速成功后自动发布。Worker/KV 发布失败时，不覆盖远端旧结果，也不影响 Gist 路线和本地结果。
 
 ### 4. 获取发布结果
 
-Worker 正式交付时将提供两个只读 HTTPS 地址，分别返回纯文本：
+部署完成后，Worker 提供两个只读 HTTPS 地址，分别返回纯文本：
 
 ```text
 https://<你的-worker-域名>/ipv4.txt
@@ -179,7 +173,7 @@ https://<你的-worker-域名>/ipv6.txt
 | 双发布 | 两条路线分别执行，互不依赖 |
 
 - IPv4、IPv6 分开生成、发布和记录状态。
-- 支持手动发布，以及后续配置的测速完成后自动发布。
+- 支持面板手动发布，以及 `CFST_AUTO_PUBLISH=true` 时测速成功后自动发布。
 - 一条路线失败不阻断另一条路线；失败路线可以单独重试。
 - 上传失败、结果为空或校验失败时，不用空文件覆盖远端已有结果。
 - 外网读取已发布文件不依赖 VPS 在线；前提是对应 Gist 或 Worker/KV 服务正常。
@@ -212,3 +206,18 @@ IPv4 使用 `ipv4.txt`，IPv6 使用 `ipv6.txt`。不会生成 YAML、Base64 或
 ## 上游
 
 测速引擎：[XIU2/CloudflareSpeedTest](https://github.com/XIU2/CloudflareSpeedTest)（当前镜像构建固定使用 v2.3.5，并校验对应架构压缩包哈希）。
+
+
+## 发布配置与操作
+
+在 `.env` 中按需填写 Gist、Cloudflare 配置。两种后端均留空时对应路线关闭。配置示例见 [`.env.example`](.env.example)。
+
+```dotenv
+CFST_GIST_ID=你的Gist_ID
+CFST_GITHUB_TOKEN=你的Gist写入Token
+CFST_CF_WORKER_URL=https://你的-worker-域名
+CFST_CF_WORKER_TOKEN=与Worker_Secret相同的密钥
+CFST_AUTO_PUBLISH=false
+```
+
+修改 `.env` 后执行 `docker compose up -d` 让容器加载新环境变量。面板中可以查看配置状态并手动发布；自动发布只会在对应协议本轮成功生成有效结果后触发。发布状态保存在 `/data/publish-state.json`，不包含 Token。
