@@ -49,7 +49,7 @@ docker compose down
 - API 提供受 Token 保护的结果下载接口。
 - 发布模块：支持 Gist 与 Cloudflare Worker/KV 独立发布、双发布、状态记录及测速成功后自动发布。
 - Cloudflare Worker 源码位于 `cloudflare-worker/`，使用 KV Binding `CFST_RESULTS` 和 Secret `CFST_UPLOAD_TOKEN`。
-- 测试：IP/CIDR 规范化、无效行处理、跨来源去重、输入大小限制和 CFST CSV 解析。
+- 测试：IP/CIDR 规范化、来源去重、CFST CSV 解析，以及 Gist/Cloudflare 发布 API、协议版本校验和双发布独立失败处理。
 
 ## 已确认的产品方向
 
@@ -86,7 +86,7 @@ docker compose down
 
 1. 打开 [GitHub Personal Access Tokens](https://github.com/settings/personal-access-tokens)。
 2. 创建专用于 CFST TOP10 的 Token。
-3. 按 GitHub 当前权限模型授予访问 Gist 所需的权限；不要授予无关仓库权限。
+3. Fine-grained Token 仅授予 Gists 的 Read and write 权限；如使用 classic Token，只需 `gist` scope，不要授予无关仓库权限。
 4. Token 只在创建时妥善保存，之后填入 CFST TOP10 服务端的发布配置。不要写入公开仓库、前端代码或截图。
 
 ### 3. 在 CFST TOP10 中配置
