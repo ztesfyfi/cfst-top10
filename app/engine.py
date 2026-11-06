@@ -164,7 +164,7 @@ class EngineManager:
                 self._state.update({"phase": "sources_ready", "candidate_count": len(merged.entries)})
                 self._save_state()
             self._log(
-                f"来源合并完成：合并前去重统计后 {len(merged.entries)} 条，
+                f"来源合并完成：合并前去重统计后 {len(merged.entries)} 条，"
                 f"无效 {merged.invalid} 条，重复 {merged.duplicates} 条"
             )
             if not merged.entries:
